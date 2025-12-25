@@ -15,18 +15,21 @@
 }
 
 /* FUNDO */
+
 body {
   min-height: 100vh;
-  background: linear-gradient(160deg,#998675 0%,#b2a18f 45%,#e8e2dc 100%);
+  background: linear-gradient(160deg, #998675 0%, #b2a18f 45%, #e8e2dc 100%);
   display: flex;
   justify-content: center;
+  align-items: center;
 }
 
 /* CONTAINER PRINCIPAL */
+  
 .screen {
   width: 100%;
   max-width: 380px;
-  height: 100dvh;
+  min-height: 100dvh;
   background: rgba(255,255,255,0.95);
   display: flex;
   flex-direction: column;
@@ -173,15 +176,11 @@ button {
 }
 
 /* RESPONSIVO */
-@media (max-width: 768px) {
-  table {
-    display: none;
-  }
-  .cards {
-    display: flex;
-    flex-direction: column;
-  }
-}
+    @media (max-width: 480px) {
+      .screen {
+        margin: 16px;
+      }
+    }
 </style>
 </head>
 
@@ -352,3 +351,4 @@ carregarProvas();
 </script>
 </body>
 </html>
+
