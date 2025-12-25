@@ -6,13 +6,29 @@
 <title>Escanear Gabarito</title>
 <style>
 * { margin:0; padding:0; box-sizing:border-box; font-family:system-ui,-apple-system,BlinkMacSystemFont,sans-serif; }
-body { min-height:100vh; background:linear-gradient(160deg, #998675 0%, #b2a18f 45%, #e8e2dc 100%); display:flex; justify-content:center; align-items:center; }
-.screen { width:100%; max-width:380px; height:100vh; background:rgba(255,255,255,0.95); display:flex; flex-direction:column; overflow:hidden; border:3px solid #998675; border-radius:16px; box-shadow:0 4px 12px rgba(0,0,0,0.1); }
+
+body {
+  min-height: 100vh;
+  background: linear-gradient(160deg, #998675 0%, #b2a18f 45%, #e8e2dc 100%);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.screen { width:100%; max-width:380px; min-height: 100dvh; background:rgba(255,255,255,0.95); display:flex; flex-direction:column; overflow:hidden; border:3px solid #998675; border-radius:16px; box-shadow:0 4px 12px rgba(0,0,0,0.1); }
+
 .header { padding:48px 24px 24px; text-align:center; }
 .header h1 { font-size:24px; color:#3f362d; }
 .subtitle { font-size:14px; color:#6b5f55; }
 .content { flex:1; padding:24px; display:flex; flex-direction:column; gap:16px; justify-content:center; align-items:center; }
 #qr-reader { width:100%; border:2px dashed #998675; border-radius:16px; padding:10px; box-sizing:border-box; }
+
+/* RESPONSIVO */
+    @media (max-width: 480px) {
+      .screen {
+        margin: 16px;
+      }
+    }
 </style>
 </head>
 <body>
@@ -48,3 +64,4 @@ html5QrcodeScanner.start(
 
 </body>
 </html>
+
