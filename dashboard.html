@@ -184,7 +184,10 @@
     });
 
     document.getElementById("btnProvas").addEventListener("click", () => {
-      window.location.href = "provascriadas.html";
+      if (tipoUsuario === "coord_esp") {
+          window.location.href = "criacaodeprova.html";
+        } else if (tipoUsuario === "coord_ing") {
+          window.location.href = "criacaodeprovadeingles.html" 
     });
 
     // Logout
@@ -197,3 +200,4 @@
 
 </body>
 </html>
+
