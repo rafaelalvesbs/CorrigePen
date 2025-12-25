@@ -26,7 +26,7 @@ body {
 .screen {
   width: 100%;
   max-width: 380px;
-  height: 100vh;
+  min-height: 100dvh;
   background: rgba(255,255,255,0.95);
   display: flex;
   flex-direction: column;
@@ -78,6 +78,14 @@ button {
   margin-top: 12px;
 }
 button:active { opacity: 0.9; }
+
+  /* RESPONSIVO */
+    @media (max-width: 480px) {
+      .screen {
+        margin: 16px;
+      }
+    }
+  
 </style>
 </head>
 <body>
@@ -129,3 +137,4 @@ document.getElementById("btnManual").addEventListener("click", () => {
 
 </body>
 </html>
+
