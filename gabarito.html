@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Definir gabarito</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;font-family:system-ui,sans-serif;}
+body{min-height:100vh;background:linear-gradient(160deg,#998675,#b2a18f,#e8e2dc);display:flex;justify-content:center;align-items:center;}
+.screen { width:100%; max-width:380px; height:100vh; background:rgba(255,255,255,0.95); display:flex; flex-direction:column; overflow:hidden;border: 3px solid #998675; border-radius: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+.header{padding:28px 24px 16px; text-align:center; }
+.header h1{ font-size:22px; color:#3f362d;}
+.subtitle{ font-size:14px; color:#6b5f55; margin-top:4px; }
+.content{flex:1;padding:20px;overflow-y:auto;}
+.questao{margin-bottom:18px;}
+.questao h3{font-size:15px;margin-bottom:8px;color:#4b423a;}
+.opcoes{display:flex;gap:10px;}
+.opcoes button{flex:1;height:42px;border-radius:10px;border:1px solid #d6cfc8;background:#fff;font-weight:600;}
+.opcoes button.ativa{background:#998675;color:#fff;border-color:#998675;}
+.footer{padding:20px 24px 28px;}
+.footer button{width:100%;height:50px;border:none;border-radius:14px;font-size:16px;font-weight:600;background:linear-gradient(135deg,#998675,#7f6d5c);color:#fff;}
+</style>
+</head>
+<body>
+<div class="screen">
+  <header class="header">
+    <h1>Definir gabarito</h1>
+    <p class="subtitle">Selecione a alternativa correta de cada questão</p>
+  </header>
+  <main class="content" id="listaQuestoes"></main>
+  <footer class="footer">
+    <button id="btnAvancar">Avançar</button>
+  </footer>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js";
+import { getDatabase, ref, set } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-database.js";
+
+// ===== Cole aqui a mesma configuração do Firebase =====
+// ===== Configuração Firebase (mesma da primeira tela) =====
+const firebaseConfig = {
+  apiKey: "AIzaSyCZ77ugK5a3pw-U0NH43F2x1bu09sS5pJg",
+  authDomain: "correcao-de-provas-f315d.firebaseapp.com",
+  projectId: "correcao-de-provas-f315d",
+  databaseURL: "https://correcao-de-provas-f315d-default-rtdb.firebaseio.com",
+  storageBucket: "correcao-de-provas-f315d.appspot.com",
+  messagingSenderId: "433578374588",
+  appId: "1:433578374588:web:31b4dcc14a2f33ab32e7b9"
+};
+
+
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+
+// Pegar parâmetros da URL enviados da tela criarProva.html
+const params = new URLSearchParams(window.location.search);
+const provaId = params.get("provaId");
+const quantidadeQuestoes = Number(params.get("quantidade")) || 5;
+
+const container = document.getElementById("listaQuestoes");
+const respostas = {};
+
+// Criar questões dinamicamente
+for (let i = 1; i <= quantidadeQuestoes; i++) {
+  const div = document.createElement("div");
+  div.className = "questao";
+  div.innerHTML = `
+    <h3>Questão ${String(i).padStart(2, "0")}</h3>
+    <div class="opcoes">
+      ${["A","B","C"].map(l => `<button data-q="${i}" data-r="${l}">${l}</button>`).join("")}
+    </div>
+  `;
+  container.appendChild(div);
+}
+
+// Selecionar respostas
+container.addEventListener("click", e => {
+  if (e.target.tagName !== "BUTTON") return;
+  const q = e.target.dataset.q;
+  const r = e.target.dataset.r;
+  respostas[q] = r;
+  e.target.parentElement.querySelectorAll("button").forEach(b => b.classList.remove("ativa"));
+  e.target.classList.add("ativa");
+});
+
+// Salvar gabarito no Firebase
+document.getElementById("btnAvancar").addEventListener("click", async () => {
+  if (Object.keys(respostas).length < quantidadeQuestoes) {
+    alert("Responda todas as questões.");
+    return;
+  }
+  try {
+    await set(ref(db, `gabaritos/${provaId}`), respostas);
+
+// Redirecionar para a tela de Revisão passando provaId
+window.location.href = `revisao.html?provaId=${provaId}`;
+
+  } catch(err) {
+    console.error(err);
+    alert("Erro ao salvar o gabarito.");
+  }
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Correção de Provas</title>
+
+  <style>
+    /* RESET */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    /* FUNDO */
+    body {
+      min-height: 100vh;
+      background: linear-gradient(160deg, #998675 0%, #b2a18f 45%, #e8e2dc 100%);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    /* CONTAINER */
+    .screen {
+      width: 100%;
+      max-width: 380px;
+      height: 100vh;
+      background: rgba(255,255,255,0.95);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      border: 3px solid #998675;
+      border-radius: 16px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+
+    /* HEADER */
+    .header {
+      padding: 48px 24px 24px;
+      text-align: center;
+    }
+
+    .header h1 {
+      font-size: 26px;
+      color: #3f362d;
+    }
+
+    .subtitle {
+      font-size: 14px;
+      color: #6b5f55;
+      margin-top: 6px;
+    }
+
+    /* CONTEÚDO */
+    .content {
+      padding: 24px;
+    }
+
+    /* CAMPOS */
+    .field {
+      display: flex;
+      flex-direction: column;
+      margin-bottom: 18px;
+    }
+
+    .field span {
+      font-size: 14px;
+      margin-bottom: 6px;
+      color: #4b423a;
+    }
+
+    .field input {
+      height: 48px;
+      padding: 0 14px;
+      font-size: 15px;
+      border-radius: 14px;
+      border: 1px solid #d6cfc8;
+      outline: none;
+    }
+
+    .field input:focus {
+      border-color: #998675;
+    }
+
+    /* ERRO */
+    .erro {
+      color: #b00020;
+      font-size: 14px;
+      margin-bottom: 14px;
+      text-align: center;
+      min-height: 18px;
+    }
+
+    /* BOTÃO */
+    button {
+      width: 100%;
+      height: 52px;
+      border: none;
+      border-radius: 16px;
+      font-size: 16px;
+      font-weight: 600;
+      background: linear-gradient(135deg, #998675, #7f6d5c);
+      color: #ffffff;
+      cursor: pointer;
+    }
+
+    button:hover {
+      opacity: 0.95;
+    }
+
+    /* RESPONSIVO */
+    @media (max-width: 480px) {
+      .screen {
+        margin: 16px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="screen">
+
+    <header class="header">
+      <h1>Correção de Provas</h1>
+      <p class="subtitle">Bem-vindo!</p>
+    </header>
+
+    <main class="content">
+      <form id="formLogin">
+
+        <label class="field">
+          <span>E-mail</span>
+          <input type="email" id="email" placeholder="Email que o administrador lhe passou" required>
+        </label>
+
+        <label class="field">
+          <span>Senha</span>
+          <input type="password" id="senha" placeholder="Senha que o administrador lhe passou" required>
+        </label>
+
+        <p id="erro" class="erro"></p>
+
+        <button type="submit">Entrar</button>
+
+      </form>
+    </main>
+  </div>
+
+  <!-- Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-auth-compat.js"></script>
+
+  <script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js";
+import { getDatabase, ref, get, child } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-database.js";
+import { getAuth, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-auth.js";
+
+// Config Firebase
+const firebaseConfig = {
+  apiKey: "AIzaSyCZ77ugK5a3pw-U0NH43F2x1bu09sS5pJg",
+  authDomain: "correcao-de-provas-f315d.firebaseapp.com",
+  projectId: "correcao-de-provas-f315d",
+  databaseURL: "https://correcao-de-provas-f315d-default-rtdb.firebaseio.com",
+};
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+const auth = getAuth(app);
+
+const form = document.getElementById("formLogin");
+const erro = document.getElementById("erro");
+
+form.addEventListener("submit", (e) => {
+  e.preventDefault();
+  erro.textContent = "";
+
+  const email = document.getElementById("email").value.trim();
+  const senha = document.getElementById("senha").value;
+
+  signInWithEmailAndPassword(auth, email, senha)
+    .then(async (userCredential) => {
+      const user = userCredential.user;
+
+      // Busca o tipo de usuário no Realtime Database
+      const dbRef = ref(db);
+      const snapshot = await get(child(dbRef, `usuarios/${user.uid}/tipo`));
+      if (snapshot.exists()) {
+        const tipoUsuario = snapshot.val();
+
+        // Redireciona conforme o tipo
+        if (tipoUsuario === "coord_esp") {
+          window.location.href = "dashboard.html";
+        } else if (tipoUsuario === "coord_ing") {
+          window.location.href = "criacaodeprovadeingles.html";
+        } else if (tipoUsuario === "professor") {
+          window.location.href = "escaneamentodoqrcode.html";
+        } else {
+          erro.textContent = "Tipo de usuário inválido.";
+        }
+
+      } else {
+        erro.textContent = "Usuário não cadastrado no sistema.";
+      }
+    })
+    .catch(() => {
+      erro.textContent = "E-mail ou senha inválidos";
+    });
+});
+</script>
+</body>
+</html>

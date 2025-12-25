@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Criar nova prova</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; font-family:system-ui,-apple-system,BlinkMacSystemFont,sans-serif; }
+body { min-height:100vh; background:linear-gradient(160deg,#998675,#b2a18f,#e8e2dc); display:flex; justify-content:center; align-items:center; }
+.screen{ width:100%; max-width:380px; height:100vh; background:rgba(255,255,255,0.95); display:flex; flex-direction:column; overflow:hidden; border:3px solid #998675; border-radius:16px; box-shadow:0 4px 12px rgba(0,0,0,0.1); position:relative; }
+.header{padding:28px 24px 16px; text-align:center; }
+.header h1{ font-size:22px; color:#3f362d;}
+.subtitle{ font-size:14px; color:#6b5f55; margin-top:4px; }
+.content{flex:1; padding:24px;padding-bottom:110px; }
+.field { display:flex; flex-direction:column; margin-bottom:18px; }
+.field span { font-size:14px; margin-bottom:6px; color:#4b423a; }
+select,input { height:46px; padding:0 14px; font-size:16px; border-radius:12px; border:1px solid #d6cfc8; outline:none; }
+select:focus,input:focus { border-color:#998675; }
+.footer{ padding:20px 24px; position:absolute; bottom:0; left:0; width:100%; background:rgba(255,255,255,0.95);}
+button { width:100%; height:50px; border:none; border-radius:14px; font-size:16px; font-weight:600; background:linear-gradient(135deg,#998675,#7f6d5c); color:#fff; }
+button:active { opacity:0.9; }
+</style>
+</head>
+<body>
+<div class="screen">
+  <header class="header">
+    <h1>Criar nova prova</h1>
+    <p class="subtitle">Defina as informações básicas da avaliação</p>
+  </header>
+  <main class="content">
+    <form id="formProva">
+      <label class="field">
+        <span>Nome da Prova</span>
+        <select id="tipoProva" required>
+          <option value="" disabled selected>Selecione o nome</option>
+          <option value="A">Reading Comprehension</option>
+          <option value="B">Listening Test</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>Etapa</span>
+        <select id="etapaProva" required>
+          <option value="" disabled selected>Selecione a etapa</option>
+          <option value="A">1ª Etapa</option>
+          <option value="B">2ª Etapa</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>Tipo de prova</span>
+        <select id="tipoProvaDetalhe" required>
+          <option value="" disabled selected>Selecione o tipo</option>
+          <option value="A">Tipo A</option>
+          <option value="B">Tipo B</option>
+          <option value="C">Tipo C</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>Curso</span>
+        <select id="disciplina" required>
+          <option value="" disabled selected>Selecione o curso</option>
+          <option value="ingles">Inglês</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>Semestre</span>
+        <select id="serie" required>
+          <option value="" disabled selected>Selecione o semestre</option>
+          <option value="1">Semestre 1</option>
+          <option value="2">Semestre 2</option>
+          <option value="3">Semestre 3</option>
+          <option value="4">Semestre 4</option>
+          <option value="5">Semestre 5</option>
+          <option value="6">Semestre 6</option>
+          <option value="7">Semestre 7</option>
+          <option value="intermediario">Intermediário</option>
+        </select>
+      
+    <label class="field">
+        <span>Número de questões</span>
+        <select id="quantidade" required>
+        <option value="" disabled selected>Selecione a quantidade</option>
+        <option value="10">10 questões</option>
+        </select>
+        </label>
+
+    </form>
+  </main>
+  <footer class="footer">
+    <button id="btnAvancar">Avançar</button>
+  </footer>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js";
+import { getDatabase, ref, push, set } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-database.js";
+import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-auth.js";
+
+// Config Firebase
+const firebaseConfig = {
+  apiKey: "AIzaSyCZ77ugK5a3pw-U0NH43F2x1bu09sS5pJg",
+  authDomain: "correcao-de-provas-f315d.firebaseapp.com",
+  projectId: "correcao-de-provas-f315d",
+  databaseURL: "https://correcao-de-provas-f315d-default-rtdb.firebaseio.com",
+};
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+const auth = getAuth(app);
+
+const btnAvancar = document.getElementById("btnAvancar");
+const form = document.getElementById("formProva");
+
+let usuarioLogado = null;
+
+// 🔒 Verifica se o usuário está logado
+onAuthStateChanged(auth, (user) => {
+  if (!user) {
+    alert("Você precisa estar logado para criar uma prova.");
+    window.location.href = "login.html";
+  } else {
+    usuarioLogado = user;
+  }
+});
+
+// Cria prova
+btnAvancar.addEventListener("click", async () => {
+  if (!form.checkValidity()) { form.reportValidity(); return; }
+  if (!usuarioLogado) { alert("Aguarde, carregando usuário..."); return; }
+
+  const dadosProva = {
+    nome: document.getElementById("tipoProva").options[document.getElementById("tipoProva").selectedIndex].text,
+    etapa: document.getElementById("etapaProva").options[document.getElementById("etapaProva").selectedIndex].text,
+    tipo: document.getElementById("tipoProvaDetalhe").options[document.getElementById("tipoProvaDetalhe").selectedIndex].text,
+    disciplina: document.getElementById("disciplina").options[document.getElementById("disciplina").selectedIndex].text,
+    semestre: document.getElementById("serie").options[document.getElementById("serie").selectedIndex].text,
+    quantidade: Number(document.getElementById("quantidade").value),
+    criadoEm: Date.now(),
+    criador: usuarioLogado.email // salva o email do usuário logado
+  };
+
+  try {
+    const novaProvaRef = push(ref(db, 'provas'));
+    await set(novaProvaRef, dadosProva);
+    const provaId = novaProvaRef.key;
+    window.location.href = `gabarito.html?provaId=${provaId}&quantidade=${dadosProva.quantidade}`;
+  } catch(err) {
+    console.error(err);
+    alert("Erro ao criar a prova. Tente novamente.");
+  }
+});
+</script>
+</body>
+</html>

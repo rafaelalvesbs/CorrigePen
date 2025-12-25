@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Minhas Provas</title>
+
+<style>
+/* RESET */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+/* FUNDO */
+body {
+  min-height: 100vh;
+  background: linear-gradient(160deg,#998675 0%,#b2a18f 45%,#e8e2dc 100%);
+  display: flex;
+  justify-content: center;
+}
+
+/* CONTAINER PRINCIPAL */
+.screen {
+  width: 100%;
+  max-width: 380px;
+  height: 100dvh;
+  background: rgba(255,255,255,0.95);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 16px;
+  border: 3px solid #998675;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+/* HEADER */
+.header {
+  padding: 24px 20px 12px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.header h1 {
+  font-size: 22px;
+  color: #3f362d;
+}
+
+.subtitle {
+  font-size: 14px;
+  color: #6b5f55;
+  margin-top: 4px;
+}
+
+/* FILTRO */
+.filter-container {
+  padding: 0 16px 16px;
+  text-align: center;
+}
+
+.filter-container select {
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid #998675;
+  font-size: 14px;
+}
+
+/* CONTEÚDO (ÚNICO SCROLL DA TELA) */
+.content {
+  flex: 1;
+  overflow: auto;
+  padding: 16px;
+}
+
+/* TABELA (DESKTOP) */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 760px;
+}
+
+th, td {
+  padding: 12px 10px;
+  border-bottom: 1px solid #ddd;
+  font-size: 13px;
+  text-align: left;
+}
+
+th {
+  background: #f3f0ed;
+  color: #3f362d;
+}
+
+td {
+  color: #4b423a;
+}
+
+/* BOTÕES */
+button {
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ver {
+  background: #998675;
+  color: #fff;
+  padding: 6px 10px;
+}
+
+.excluir {
+  background: #e6e0da;
+  color: #3f362d;
+  padding: 6px 10px;
+}
+
+/* FOOTER */
+.footer {
+  padding: 12px 16px 20px;
+  flex-shrink: 0;
+}
+
+.footer button {
+  width: 100%;
+  height: 50px;
+  border-radius: 14px;
+  font-size: 16px;
+  font-weight: 600;
+  background: linear-gradient(135deg,#998675,#7f6d5c);
+  color: #fff;
+}
+
+/* CARDS (MOBILE) */
+.cards {
+  display: none;
+  gap: 12px;
+}
+
+.card {
+  background: #fff;
+  border-radius: 16px;
+  padding: 14px;
+  box-shadow: 0 6px 18px rgba(0,0,0,.08);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.card h3 {
+  font-size: 16px;
+  color: #3f362d;
+}
+
+.card p {
+  font-size: 13px;
+  color: #5a5047;
+}
+
+.card .actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.card button {
+  flex: 1;
+  height: 38px;
+  border-radius: 10px;
+}
+
+/* RESPONSIVO */
+@media (max-width: 768px) {
+  table {
+    display: none;
+  }
+  .cards {
+    display: flex;
+    flex-direction: column;
+  }
+}
+</style>
+</head>
+
+<body>
+<div class="screen">
+
+  <header class="header">
+    <h1>Minhas Provas</h1>
+    <p class="subtitle">Provas criadas</p>
+  </header>
+
+  <!-- FILTRO DE DISCIPLINA -->
+  <div class="filter-container">
+    <label for="filtroDisciplina">Filtrar por disciplina:</label>
+    <select id="filtroDisciplina">
+      <option value="Todas">Todas</option>
+      <option value="Inglês">Inglês</option>
+      <option value="Espanhol">Espanhol</option>
+    </select>
+  </div>
+
+  <main class="content">
+    <table>
+      <thead>
+        <tr>
+          <th>Nome</th>
+          <th>Curso</th>
+          <th>Semestre</th>
+          <th>Tipo</th>
+          <th>Questões</th>
+          <th>Criador</th>
+          <th>Data</th>
+          <th>Ações</th>
+        </tr>
+      </thead>
+      <tbody id="listaProvas"></tbody>
+    </table>
+
+    <div id="cardsProvas" class="cards"></div>
+  </main>
+
+  <footer class="footer">
+    <button id="btnNovaProva">Voltar para Página Inicial</button>
+  </footer>
+
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js";
+import { getDatabase, ref, get, remove } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-database.js";
+
+/* FIREBASE */
+const firebaseConfig = {
+  apiKey: "AIzaSyCZ77ugK5a3pw-U0NH43F2x1bu09sS5pJg",
+  authDomain: "correcao-de-provas-f315d.firebaseapp.com",
+  databaseURL: "https://correcao-de-provas-f315d-default-rtdb.firebaseio.com",
+  projectId: "correcao-de-provas-f315d"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+
+const lista = document.getElementById("listaProvas");
+const cards = document.getElementById("cardsProvas");
+const filtro = document.getElementById("filtroDisciplina");
+
+/* MAPAS PARA EXIBIÇÃO LEGÍVEL */
+const semestreMap = {
+  "1": "Semestre 1",
+  "2": "Semestre 2",
+  "3": "Semestre 3",
+  "4": "Semestre 4",
+  "5": "Semestre 5",
+  "6": "Semestre 6",
+  "7": "Semestre 7",
+  "intermediario": "Intermediário"
+};
+
+const tipoMap = {
+  "A": "Tipo A",
+  "B": "Tipo B",
+  "C": "Tipo C"
+};
+
+async function carregarProvas() {
+  lista.innerHTML = "";
+  cards.innerHTML = "";
+
+  const snap = await get(ref(db, "provas"));
+  if (!snap.exists()) {
+    lista.innerHTML = `<tr><td colspan="8">Nenhuma prova criada.</td></tr>`;
+    cards.innerHTML = `<p style="text-align:center;color:#666;">Nenhuma prova criada.</p>`;
+    return;
+  }
+
+  const disciplinaSelecionada = filtro.value;
+
+  Object.entries(snap.val()).forEach(([id, prova]) => {
+    const curso = prova.disciplina || prova.cursoSelecionado || "-";
+
+    // Aplique o filtro
+    if (disciplinaSelecionada !== "Todas" && curso !== disciplinaSelecionada) return;
+
+    const questoes = prova.quantidade || prova.qtdQuestoes || "-";
+    const data = prova.criadoEm ? new Date(prova.criadoEm).toLocaleString("pt-BR") : "-";
+    const semestreExibido = semestreMap[prova.semestre] || prova.semestre || "-";
+    const tipoExibido = tipoMap[prova.tipo] || prova.tipo || "-";
+
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${prova.nome || "-"}</td>
+      <td>${curso}</td>
+      <td>${semestreExibido}</td>
+      <td>${tipoExibido}</td>
+      <td>${questoes}</td>
+      <td>${prova.criador || "-"}</td>
+      <td>${data}</td>
+      <td>
+        <button class="ver">Ver QR</button>
+        <button class="excluir">Excluir</button>
+      </td>
+    `;
+
+    tr.querySelector(".ver").onclick = () =>
+      location.href = `qr.html?provaId=${id}`;
+
+    tr.querySelector(".excluir").onclick = async () => {
+      if (confirm("Excluir esta prova?")) {
+        await remove(ref(db, `provas/${id}`));
+        await remove(ref(db, `gabaritos/${id}`));
+        carregarProvas();
+      }
+    };
+
+    lista.appendChild(tr);
+
+    const card = document.createElement("div");
+    card.className = "card";
+    card.innerHTML = `
+      <h3>${prova.nome || "-"}</h3>
+      <p><strong>Curso:</strong> ${curso}</p>
+      <p><strong>Semestre:</strong> ${semestreExibido}</p>
+      <p><strong>Tipo:</strong> ${tipoExibido}</p>
+      <p><strong>Questões:</strong> ${questoes}</p>
+      <p><strong>Data:</strong> ${data}</p>
+      <div class="actions">
+        <button class="ver">Ver QR</button>
+        <button class="excluir">Excluir</button>
+      </div>
+    `;
+
+    card.querySelector(".ver").onclick = () =>
+      location.href = `qr.html?provaId=${id}`;
+
+    card.querySelector(".excluir").onclick = tr.querySelector(".excluir").onclick;
+
+    cards.appendChild(card);
+  });
+}
+
+// Recarregar quando o filtro mudar
+filtro.addEventListener("change", carregarProvas);
+
+document.getElementById("btnNovaProva").onclick = () =>
+  location.href = "dashboard.html";
+
+carregarProvas();
+</script>
+</body>
+</html>

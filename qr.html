@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QR Code da Prova</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; font-family:system-ui,-apple-system,BlinkMacSystemFont,sans-serif; }
+body { min-height:100vh; background:linear-gradient(160deg,#998675,#7f6d5c,#e8e2dc); display:flex; justify-content:center; align-items:center; }
+.screen{ width:100%; max-width:380px; height:100vh; background:rgba(255,255,255,0.95); display:flex; flex-direction:column; overflow:hidden; border:3px solid #998675; border-radius:16px; box-shadow:0 4px 12px rgba(0,0,0,0.1); position:relative; }
+.header{padding:28px 24px 16px; text-align:center; }
+.header h1{ font-size:22px; color:#3f362d;}
+.subtitle{ font-size:14px; color:#6b5f55; margin-top:4px; }
+.content { flex:1; padding:24px; display:flex; flex-direction:column; align-items:center; }
+.qr-container { background:#fff; padding:20px; border-radius:20px; box-shadow:0 6px 18px rgba(0,0,0,0.12); margin-bottom:24px; }
+.pin-box { text-align:center; margin-bottom:16px; }
+.pin-label { font-size:13px; color:#6b5f55; display:block; }
+.pin-value { font-size:20px; font-weight:700; color:#3f362d; letter-spacing:4px; }
+.info { font-size:13px; color:#6b5f55; text-align:center; line-height:1.6; }
+.footer { padding:20px 24px 32px; display:flex; gap:10px; }
+.footer button { flex:1; height:50px; border:none; border-radius:14px; font-size:16px; font-weight:600; background:linear-gradient(135deg,#998675,#7f6d5c); color:#fff; cursor:pointer; }
+</style>
+</head>
+<body>
+<div class="screen">
+  <header class="header">
+    <h1>QR Code da Prova</h1>
+    <p class="subtitle">Confira os dados e compartilhe o QR Code</p>
+  </header>
+  <main class="content">
+    <div class="qr-container">
+      <canvas id="qrCode"></canvas>
+    </div>
+    <div class="pin-box">
+      <span class="pin-label">PIN interno</span>
+      <span id="pinGerado" class="pin-value">----</span>
+    </div>
+    <div class="info">
+      <p>Não compartilhe o PIN com terceiros.</p>
+    </div>
+  </main>
+  <footer class="footer">
+    <button id="btnVoltar">Voltar para Página Inicial</button>
+  </footer>
+</div>
+
+<script type="module">
+import QRCode from "https://cdn.jsdelivr.net/npm/qrcode@1.5.4/+esm";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js";
+import { getDatabase, ref, get } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-database.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyCZ77ugK5a3pw-U0NH43F2x1bu09sS5pJg",
+  authDomain: "correcao-de-provas-f315d.firebaseapp.com",
+  projectId: "correcao-de-provas-f315d",
+  databaseURL: "https://correcao-de-provas-f315d-default-rtdb.firebaseio.com",
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+
+const canvas = document.getElementById("qrCode");
+const pinEl = document.getElementById("pinGerado");
+const btnVoltar = document.getElementById("btnVoltar");
+
+const params = new URLSearchParams(window.location.search);
+const provaId = params.get("provaId");
+
+if (!provaId) {
+  alert("Prova não encontrada.");
+  throw new Error("provaId ausente");
+}
+
+async function carregarQR() {
+  const provaSnap = await get(ref(db, `provas/${provaId}`));
+  const gabaritoSnap = await get(ref(db, `gabaritos/${provaId}`));
+
+  if (!provaSnap.exists()) {
+    alert("Prova não encontrada.");
+    return;
+  }
+
+  const prova = provaSnap.val();
+  const gabarito = gabaritoSnap.exists() ? gabaritoSnap.val() : {};
+
+  if (!prova.pin) {
+    alert("QR ainda não foi gerado para esta prova.");
+    return;
+  }
+
+  pinEl.textContent = prova.pin;
+
+  const payload = {
+    provaId,
+    prova,
+    gabarito,
+    pin: prova.pin
+  };
+
+  await QRCode.toCanvas(canvas, JSON.stringify(payload), {
+    width: 220,
+    margin: 1
+  });
+}
+
+carregarQR();
+
+btnVoltar.onclick = () => {
+  location.href = "dashboard.html";
+};
+</script>
+
+</body>
+</html>
