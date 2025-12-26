@@ -3,114 +3,159 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Scanner de Gabarito</title>
+    <title>Scanner OMR Inteligente</title>
+    <script async src="https://docs.opencv.org/4.5.4/opencv.js" type="text/javascript"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: sans-serif; }
-        body { background: #000; overflow: hidden; color: white; text-align: center; }
+        body { background: #1a1a1a; color: white; overflow: hidden; }
         
-        /* Container do Vídeo */
-        #video-container { position: relative; width: 100vw; height: 100vh; }
-        video { width: 100%; height: 100%; object-fit: cover; }
+        .container { position: relative; width: 100vw; height: 100vh; display: flex; flex-direction: column; }
         
-        /* Overlay de Scanner */
-        .scan-overlay {
-            position: absolute; top: 50%; left: 50%;
-            transform: translate(-50%, -50%);
-            width: 80%; height: 60%;
-            border: 2px solid rgba(255,255,255,0.5);
-            border-radius: 15px;
-            box-shadow: 0 0 0 1000px rgba(0,0,0,0.6);
+        #video-feed { width: 100%; height: 100%; object-fit: cover; }
+        #canvas-output { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
+
+        /* Guia visual de enquadramento */
+        .guide {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 85%; height: 70%; border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 10px; pointer-events: none;
         }
 
-        /* Pontos verdes animados (Simulação de detecção) */
-        .dot {
-            position: absolute; width: 15px; height: 15px;
-            background: #00ff00; border-radius: 50%;
-            box-shadow: 0 0 10px #00ff00; display: none;
+        .status-panel {
+            position: absolute; top: 40px; width: 100%; text-align: center;
+            background: rgba(0,0,0,0.6); padding: 15px;
         }
 
-        .status-bar {
-            position: absolute; top: 20px; width: 100%;
-            padding: 10px; background: rgba(0,0,0,0.7);
+        #loading-cv {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: #998675; display: flex; justify-content: center;
+            align-items: center; z-index: 100; font-weight: bold;
         }
-        
-        .btn-capture {
-            position: absolute; bottom: 40px; left: 50%;
-            transform: translateX(-50%);
-            padding: 15px 40px; border-radius: 30px;
-            border: none; background: #998675; color: white;
-            font-weight: bold; font-size: 16px; cursor: pointer;
+
+        .controls { position: absolute; bottom: 30px; width: 100%; display: flex; justify-content: center; }
+        .btn-scan {
+            padding: 15px 35px; background: #998675; border: none;
+            color: white; border-radius: 30px; font-weight: bold; font-size: 18px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3); display: none;
         }
     </style>
 </head>
 <body>
 
-<div id="video-container">
-    <video id="webcam" autoplay playsinline></video>
-    <div class="scan-overlay">
-        <div id="dot1" class="dot" style="top:20%; left:30%;"></div>
-        <div id="dot2" class="dot" style="top:40%; left:70%;"></div>
-        <div id="dot3" class="dot" style="top:60%; left:40%;"></div>
-    </div>
-    
-    <div class="status-bar">
-        <h2 id="msg">Alinhe o Gabarito</h2>
-        <p id="sub-msg">Buscando marcações...</p>
+<div id="loading-cv">Iniciando Visão Computacional...</div>
+
+<div class="container">
+    <video id="video-feed" autoplay playsinline></video>
+    <canvas id="canvas-output"></canvas>
+    <div class="guide"></div>
+
+    <div class="status-panel">
+        <h2 id="info">Alinhe o Gabarito</h2>
+        <p id="sub-info">Aguardando detecção de marcações...</p>
     </div>
 
-    <button id="btn-processar" class="btn-capture" style="display:none;">PROCESSAR NOTA</button>
+    <div class="controls">
+        <button id="btn-processar" class="btn-scan">CAPTURAR NOTA</button>
+    </div>
 </div>
 
-<audio id="beep" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3"></audio>
+<audio id="beep-sound" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3"></audio>
 
 <script type="module">
-    const video = document.getElementById('webcam');
-    const msg = document.getElementById('msg');
-    const dots = document.querySelectorAll('.dot');
-    const beep = document.getElementById('beep');
+    const video = document.getElementById('video-feed');
+    const canvas = document.getElementById('canvas-output');
     const btn = document.getElementById('btn-processar');
+    const beep = document.getElementById('beep-sound');
+    const info = document.getElementById('info');
+    
+    let isCVLoaded = false;
+    let provaId = new URLSearchParams(window.location.search).get("provaId");
 
-    // Iniciar Câmera
+    // Espera o OpenCV carregar
+    window.onOpenCvReady = () => {
+        document.getElementById('loading-cv').style.display = 'none';
+        isCVLoaded = true;
+        startCamera();
+    };
+
     async function startCamera() {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ 
-                video: { facingMode: "environment" } 
+                video: { facingMode: "environment", width: 1280, height: 720 } 
             });
             video.srcObject = stream;
-            setTimeout(simularDeteccao, 2000);
+            processFrame();
         } catch (err) {
             alert("Erro ao acessar câmera: " + err);
         }
     }
 
-    // Simulação visual da detecção de bolinhas
-    function simularDeteccao() {
-        msg.innerText = "Gabarito Identificado!";
-        msg.style.color = "#00ff00";
-        
-        // Ativa os pontos verdes um a um com som
-        dots.forEach((dot, index) => {
-            setTimeout(() => {
-                dot.style.display = 'block';
-                beep.currentTime = 0;
-                beep.play();
-            }, index * 400);
-        });
+    // Processamento de imagem em tempo real
+    function processFrame() {
+        if (!isCVLoaded) return;
 
-        setTimeout(() => {
-            btn.style.display = 'block';
-        }, 1500);
+        const src = new cv.Mat(video.videoHeight, video.videoWidth, cv.CV_8UC4);
+        const cap = new cv.VideoCapture(video);
+
+        function loop() {
+            try {
+                cap.read(src);
+                let gray = new cv.Mat();
+                cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+                cv.GaussianBlur(gray, gray, new cv.Size(5, 5), 0);
+                
+                // Detecção de Círculos (Hough Circles)
+                let circles = new cv.Mat();
+                cv.HoughCircles(gray, circles, cv.HOUGH_GRADIENT, 1, 35, 70, 30, 10, 30);
+
+                const ctx = canvas.getContext('2d');
+                canvas.width = video.clientWidth;
+                canvas.height = video.clientHeight;
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                if (circles.cols > 0) {
+                    info.innerText = "Gabarito Detectado";
+                    info.style.color = "#00ff00";
+                    btn.style.display = 'block';
+
+                    // Desenha os pontos verdes nas bolinhas detectadas
+                    for (let i = 0; i < Math.min(circles.cols, 20); ++i) {
+                        let x = circles.data32F[i * 3];
+                        let y = circles.data32F[i * 3 + 1];
+                        let r = circles.data32F[i * 3 + 2];
+
+                        // Ajuste de escala para o canvas
+                        let scaleX = canvas.width / video.videoWidth;
+                        let scaleY = canvas.height / video.videoHeight;
+
+                        ctx.beginPath();
+                        ctx.arc(x * scaleX, y * scaleY, r * scaleX, 0, 2 * Math.PI);
+                        ctx.fillStyle = "rgba(0, 255, 0, 0.6)";
+                        ctx.fill();
+                        ctx.strokeStyle = "white";
+                        ctx.stroke();
+                    }
+                }
+
+                gray.delete(); circles.delete();
+                requestAnimationFrame(loop);
+            } catch (e) {
+                console.error(e);
+            }
+        }
+        loop();
     }
 
     btn.onclick = () => {
-        const params = new URLSearchParams(window.location.search);
-        const provaId = params.get("provaId");
-        // Aqui simulamos o cálculo da nota obtida
-        const notaSimulada = Math.floor(Math.random() * 10); 
-        window.location.href = `acertosdoaluno.html?provaId=${provaId}&nota=${notaSimulada}`;
+        beep.play();
+        // Simulação de processamento final (no mundo real, aqui você compararia as posições XY com o gabarito oficial)
+        const acertos = Math.floor(Math.random() * 10) + 1; 
+        window.location.href = `acertosdoaluno.html?provaId=${provaId}&nota=${acertos}`;
     };
 
-    startCamera();
+    // Callback para o script do OpenCV
+    setTimeout(() => { if(cv.Mat) onOpenCvReady(); }, 2000);
 </script>
+
 </body>
 </html>
