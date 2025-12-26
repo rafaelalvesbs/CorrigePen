@@ -22,6 +22,19 @@ body {
   justify-content: center;
 }
 
+html, body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  display: flex;
+  justify-content: center;
+  align-items: stretch;
+}
+
+
+
 /* CONTAINER PRINCIPAL */
 .screen {
   width: 100%;
@@ -33,8 +46,9 @@ body {
   border-radius: 16px;
   border: 3px solid #998675;
   box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-  height: 100vh; /* Desktop: ocupa a tela inteira */
+  min-height: 100vh; /* garante que ocupe a tela inteira */
 }
+
 
 /* Mobile: mantém altura limitada e scroll interno */
 @media (max-width: 768px) {
