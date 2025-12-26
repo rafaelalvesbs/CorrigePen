@@ -178,11 +178,34 @@
       }
     });
 
-    // Navegação do Dashboard
-    document.getElementById("btnCriar").addEventListener("click", () => {
-      window.location.href = "criacaodeprova.html";
-    });
+    // 1. Variável global para armazenar o tipo do usuário
+let tipoUsuarioGlobal = "";
 
+// 2. No onAuthStateChanged, vamos descobrir quem é o usuário
+auth.onAuthStateChanged(async (user) => {
+  if (!user) {
+    window.location.href = "login.html";
+  } else {
+    // Busca o tipo de usuário no banco de dados
+    const snapshot = await firebase.database().ref(`usuarios/${user.uid}/tipo`).once('value');
+    if (snapshot.exists()) {
+      tipoUsuarioGlobal = snapshot.val();
+    }
+  }
+});
+
+// 3. Altera o clique do botão Criar
+document.getElementById("btnCriar").addEventListener("click", () => {
+  if (tipoUsuarioGlobal === "coord_ing") {
+    // Se for coordenador de inglês, vai para a tela de inglês
+    window.location.href = "criacaodeprovadeingles.html";
+  } else {
+    // Para coord_esp ou outros, vai para a tela padrão (espanhol)
+    window.location.href = "criacaodeprova.html";
+  }
+});
+
+    // Botão Provas Criadas
     document.getElementById("btnProvas").addEventListener("click", () => {
       window.location.href = "provascriadas.html";
     });
@@ -197,4 +220,3 @@
 
 </body>
 </html>
-
