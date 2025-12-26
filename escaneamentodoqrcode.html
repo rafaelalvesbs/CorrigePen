@@ -193,10 +193,10 @@ async function iniciarScanner() {
 
     try {
       await scanner.start(
-        { facingMode: { exact: "environment" } },
-        { fps: 10, qrbox: 250 },
-        onScanSuccess
-      );
+  { facingMode: "environment" },
+  { fps: 10, qrbox: 250 },
+  onScanSuccess
+);
     } catch (err) {
       console.error(err);
       alert("Erro ao acessar a câmera. Abra no navegador do celular.");
@@ -224,5 +224,6 @@ retryBtn.addEventListener("click", iniciarScanner);
 
 </body>
 </html>
+
 
 
