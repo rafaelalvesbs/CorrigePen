@@ -170,19 +170,40 @@
 
     firebase.initializeApp(firebaseConfig);
     const auth = firebase.auth();
+    let tipoUsuarioLogado = null;
 
     // 🔒 Proteção de rota: se não estiver logado, volta pro login
     auth.onAuthStateChanged((user) => {
-      if (!user) {
-        window.location.href = "login.html";
+  if (!user) {
+    window.location.href = "login.html";
+    return;
+  }
+
+  firebase
+    .database()
+    .ref(`usuarios/${user.uid}/tipo`)
+    .once("value")
+    .then((snapshot) => {
+      if (snapshot.exists()) {
+        tipoUsuarioLogado = snapshot.val();
+      } else {
+        alert("Tipo de usuário não encontrado.");
       }
     });
+});
 
     // Navegação do Dashboard
     document.getElementById("btnCriar").addEventListener("click", () => {
-      window.location.href = "criacaodeprova.html";
-    });
+  if (tipoUsuarioLogado === "coord_ing") {
+    window.location.href = "criacaodeprovadeingles.html";
+  } else if (tipoUsuarioLogado === "coord_esp") {
+    window.location.href = "criacaodeprova.html";
+  } else {
+    alert("Usuário sem permissão para criar prova.");
+  }
+});
 
+    // Botão de Provas criadas
     document.getElementById("btnProvas").addEventListener("click", () => {
       window.location.href = "provascriadas.html";
     });
