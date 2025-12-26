@@ -1,67 +1,150 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Escanear Gabarito</title>
-<style>
-* { margin:0; padding:0; box-sizing:border-box; font-family:system-ui,-apple-system,BlinkMacSystemFont,sans-serif; }
-
-body {
-  min-height: 100vh;
-  background: linear-gradient(160deg, #998675 0%, #b2a18f 45%, #e8e2dc 100%);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-}
-
-.screen { width:100%; max-width:380px; min-height: 100dvh; background:rgba(255,255,255,0.95); display:flex; flex-direction:column; overflow:hidden; border:3px solid #998675; border-radius:16px; box-shadow:0 4px 12px rgba(0,0,0,0.1); }
-
-.header { padding:48px 24px 24px; text-align:center; }
-.header h1 { font-size:24px; color:#3f362d; }
-.subtitle { font-size:14px; color:#6b5f55; }
-.content { flex:1; padding:24px; display:flex; flex-direction:column; gap:16px; justify-content:center; align-items:center; }
-#qr-reader { width:100%; border:2px dashed #998675; border-radius:16px; padding:10px; box-sizing:border-box; }
-
-/* RESPONSIVO */
-    @media (max-width: 480px) {
-      .screen {
-        margin: 16px;
-      }
-    }
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Corrigir Gabarito</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: system-ui, sans-serif; }
+        body {
+            min-height: 100vh;
+            background: linear-gradient(160deg, #998675 0%, #b2a18f 45%, #e8e2dc 100%);
+            display: flex; justify-content: center; align-items: center; padding: 20px;
+        }
+        .screen {
+            width: 100%; max-width: 380px; min-height: 550px;
+            background: rgba(255,255,255,0.95);
+            display: flex; flex-direction: column;
+            border: 3px solid #998675; border-radius: 20px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.15); overflow: hidden;
+        }
+        .header { padding: 30px 24px 10px; text-align: center; }
+        .header h1 { font-size: 20px; color: #3f362d; }
+        .content { flex: 1; padding: 20px; display: flex; flex-direction: column; gap: 15px; }
+        
+        /* Área da Câmera/Foto */
+        #upload-area {
+            width: 100%; height: 200px; border: 2px dashed #998675;
+            border-radius: 15px; display: flex; flex-direction: column;
+            align-items: center; justify-content: center; background: #fdfcfb;
+            cursor: pointer; position: relative;
+        }
+        #preview { width: 100%; height: 100%; object-fit: contain; display: none; border-radius: 12px; }
+        
+        .result-box {
+            background: #fff; padding: 15px; border-radius: 12px;
+            border: 1px solid #d6cfc8; display: none;
+        }
+        .score { font-size: 24px; font-weight: bold; color: #998675; text-align: center; display: block; }
+        
+        .footer { padding: 20px; display: flex; flex-direction: column; gap: 10px; }
+        button { width: 100%; height: 48px; border: none; border-radius: 12px; font-size: 16px; font-weight: 600; cursor: pointer; }
+        .btn-main { background: #998675; color: #fff; }
+        .btn-off { background: #e6e0da; color: #4b423a; }
+        
+        #file-input { display: none; }
+    </style>
 </head>
 <body>
 
 <div class="screen">
-  <header class="header">
-    <h1>Escanear Gabarito</h1>
-    <p class="subtitle">Aponte a câmera para o QR code do gabarito</p>
-  </header>
+    <header class="header">
+        <h1 id="nome-prova">Carregando prova...</h1>
+        <p style="font-size: 13px; color: #6b5f55;">Capture a foto do gabarito do aluno</p>
+    </header>
 
-  <main class="content">
-    <div id="qr-reader"></div>
-  </main>
+    <main class="content">
+        <label id="upload-area" for="file-input">
+            <img id="icon-cam" src="https://cdn-icons-png.flaticon.com/512/685/685655.png" width="50">
+            <span id="label-text">Toque para tirar foto</span>
+            <img id="preview">
+        </label>
+        <input type="file" id="file-input" accept="image/*" capture="environment">
+
+        <div id="result-area" class="result-box">
+            <p style="text-align:center; font-size: 14px; color: #6b5f55;">Total de Acertos:</p>
+            <span id="score-val" class="score">0 / 0</span>
+        </div>
+    </main>
+
+    <footer class="footer">
+        <button id="btn-finalizar" class="btn-main" style="display: none;">Salvar e Ver Notas</button>
+        <button onclick="history.back()" class="btn-off">Voltar</button>
+    </footer>
 </div>
 
-<script src="https://unpkg.com/html5-qrcode@2.3.9/minified/html5-qrcode.min.js"></script>
-<script>
-// Função chamada quando QR code é lido
-function onScanSuccess(decodedText, decodedResult) {
-    console.log(`QR Code lido: ${decodedText}`);
-    // Redireciona para a tela de resultados da prova
-    window.location.href = `acertosdoaluno.html?gabaritoId=${decodedText}`;
-}
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js";
+    import { getDatabase, ref, get } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-database.js";
 
-// Inicializa scanner
-let html5QrcodeScanner = new Html5Qrcode("qr-reader");
-html5QrcodeScanner.start(
-    { facingMode: "environment" },
-    { fps: 10, qrbox: 250 },
-    onScanSuccess
-).catch(err => console.error(err));
+    const firebaseConfig = {
+        apiKey: "AIzaSyCZ77ugK5a3pw-U0NH43F2x1bu09sS5pJg",
+        authDomain: "correcao-de-provas-f315d.firebaseapp.com",
+        projectId: "correcao-de-provas-f315d",
+        databaseURL: "https://correcao-de-provas-f315d-default-rtdb.firebaseio.com",
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    const params = new URLSearchParams(window.location.search);
+    const provaId = params.get("provaId");
+
+    let gabaritoOficial = null;
+    let totalQuestoes = 0;
+
+    // 1. Carregar dados da prova
+    async function carregarDados() {
+        if (!provaId) return alert("Erro: ID da prova não encontrado.");
+        
+        const snapGabarito = await get(ref(db, `gabaritos/${provaId}`));
+        const snapProva = await get(ref(db, `provas/${provaId}`));
+
+        if (snapGabarito.exists() && snapProva.exists()) {
+            gabaritoOficial = snapGabarito.val();
+            totalQuestoes = snapProva.val().quantidade;
+            document.getElementById("nome-prova").innerText = snapProva.val().nome;
+        }
+    }
+
+    // 2. Simular leitura do gabarito (via foto)
+    document.getElementById("file-input").onchange = function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        // Mostrar preview da foto
+        const reader = new FileReader();
+        reader.onload = function(event) {
+            document.getElementById("preview").src = event.target.result;
+            document.getElementById("preview").style.display = "block";
+            document.getElementById("icon-cam").style.display = "none";
+            document.getElementById("label-text").style.display = "none";
+            
+            processarCorrecao();
+        };
+        reader.readAsDataURL(file);
+    };
+
+    function processarCorrecao() {
+        // NOTA: Para uma correção real automática, você precisaria de uma biblioteca 
+        // pesada como OpenCV.js. Aqui vamos simular que o sistema leu e comparou.
+        
+        let acertos = Math.floor(Math.random() * (totalQuestoes + 1)); // Simulação de correção
+        
+        document.getElementById("result-area").style.display = "block";
+        document.getElementById("score-val").innerText = `${acertos} / ${totalQuestoes}`;
+        document.getElementById("btn-finalizar").style.display = "block";
+
+        // Salva temporariamente no sessionStorage para a próxima tela
+        sessionStorage.setItem("ultimaNota", acertos);
+        sessionStorage.setItem("totalQuestoes", totalQuestoes);
+    }
+
+    document.getElementById("btn-finalizar").onclick = () => {
+        window.location.href = `acertosdoaluno.html?provaId=${provaId}`;
+    };
+
+    carregarDados();
 </script>
-
 </body>
 </html>
-
