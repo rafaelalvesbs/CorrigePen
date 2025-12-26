@@ -1,52 +1,34 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Scanner OMR</title>
-
-<script async src="https://docs.opencv.org/4.5.4/opencv.js"></script>
-
-<style>
-body {
-  margin: 0;
-  background: black;
-  overflow: hidden;
-}
-video, canvas {
-  position: absolute;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-#status {
-  position: fixed;
-  top: 20px;
-  width: 100%;
-  text-align: center;
-  color: white;
-  font-size: 18px;
-  z-index: 10;
-}
-#btn {
-  position: fixed;
-  bottom: 30px;
-  left: 50%;
-  transform: translateX(-50%);
-  padding: 20px 50px;
-  font-size: 20px;
-  border-radius: 40px;
-  background: #00ff00;
-  border: none;
-  display: none;
-}
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scanner OMR</title>
+    <script src="https://docs.opencv.org/4.5.4/opencv.js"></script>
+    <style>
+        body { margin: 0; background: black; overflow: hidden; font-family: sans-serif; }
+        video, canvas { position: absolute; width: 100%; height: 100%; object-fit: cover; }
+        #status {
+            position: fixed; top: 20px; width: 100%; text-align: center;
+            color: white; font-size: 18px; z-index: 10; background: rgba(0,0,0,0.5); padding: 10px 0;
+        }
+        #btn {
+            position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
+            padding: 20px 50px; font-size: 20px; border-radius: 40px;
+            background: #00ff00; border: none; display: none; z-index: 20; font-weight: bold;
+        }
+        #loading {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: #222; color: white; display: flex; justify-content: center;
+            align-items: center; z-index: 100;
+        }
+    </style>
 </head>
-
 <body>
 
-<div id="status">Buscando marcações...</div>
-<video id="video" autoplay playsinline></video>
+<div id="loading">Iniciando OpenCV...</div>
+<div id="status">Aguardando câmera...</div>
+<video id="video" autoplay playsinline muted></video>
 <canvas id="canvas"></canvas>
 <button id="btn">CAPTURAR</button>
 
@@ -59,80 +41,112 @@ const ctx = canvas.getContext("2d");
 const status = document.getElementById("status");
 const btn = document.getElementById("btn");
 const beep = document.getElementById("beep");
+const loading = document.getElementById("loading");
 
-function startCamera() {
-  navigator.mediaDevices.getUserMedia({
-    video: { facingMode: "environment" }
-  }).then(stream => {
-    video.srcObject = stream;
-    video.onloadedmetadata = () => {
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      process();
-    };
-  });
+// 1. Verificar se o OpenCV está pronto usando um Interval (Mais seguro)
+const checkCV = setInterval(() => {
+    if (typeof cv !== 'undefined' && cv.Mat) {
+        clearInterval(checkCV);
+        loading.style.display = "none";
+        console.log("OpenCV carregado!");
+        startCamera();
+    }
+}, 500);
+
+// 2. Iniciar Câmera
+async function startCamera() {
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+            video: { 
+                facingMode: "environment",
+                width: { ideal: 640 },
+                height: { ideal: 480 }
+            }
+        });
+        video.srcObject = stream;
+        video.onloadedmetadata = () => {
+            video.play();
+            // Ajustar canvas após o vídeo carregar
+            setTimeout(() => {
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                process();
+            }, 1000);
+        };
+    } catch (err) {
+        status.innerText = "Erro ao acessar câmera: " + err.message;
+        console.error(err);
+    }
 }
 
+// 3. Processamento OMR
 function process() {
-  let src = new cv.Mat(video.videoHeight, video.videoWidth, cv.CV_8UC4);
-  let gray = new cv.Mat();
-  let blurred = new cv.Mat();
-  let thresh = new cv.Mat();
-  let contours = new cv.MatVector();
-  let hierarchy = new cv.Mat();
+    // Definir as matrizes fora do loop para não estourar a memória
+    let src = new cv.Mat(video.videoHeight, video.videoWidth, cv.CV_8UC4);
+    let gray = new cv.Mat();
+    let blurred = new cv.Mat();
+    let thresh = new cv.Mat();
+    let contours = new cv.MatVector();
+    let hierarchy = new cv.Mat();
+    const cap = new cv.VideoCapture(video);
 
-  const cap = new cv.VideoCapture(video);
+    function loop() {
+        try {
+            cap.read(src);
+            cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+            cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 0);
+            
+            // Threshold adaptativo ajuda com sombras e luzes variadas
+            cv.threshold(blurred, thresh, 120, 255, cv.THRESH_BINARY_INV);
 
-  function loop() {
-    cap.read(src);
+            cv.findContours(thresh, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
 
-    cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-    cv.GaussianBlur(gray, blurred, new cv.Size(5,5), 0);
-    cv.threshold(blurred, thresh, 100, 255, cv.THRESH_BINARY_INV);
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            let bolinhasCount = 0;
 
-    cv.findContours(thresh, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+            for (let i = 0; i < contours.size(); i++) {
+                let cnt = contours.get(i);
+                let area = cv.contourArea(cnt);
+                let rect = cv.boundingRect(cnt);
+                
+                // Filtro para detectar o que parece uma bolinha preenchida
+                let aspectRatio = rect.width / rect.height;
+                if (area > 300 && area < 3000 && aspectRatio > 0.8 && aspectRatio < 1.2) {
+                    ctx.strokeStyle = "#00ff00";
+                    ctx.lineWidth = 4;
+                    ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
+                    bolinhasCount++;
+                }
+            }
 
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+            if (bolinhasCount >= 3) {
+                status.innerText = bolinhasCount + " Marcações Detectadas!";
+                status.style.color = "#00ff00";
+                btn.style.display = "block";
+                // Tocar som apenas se o botão acabar de aparecer
+                if(btn.dataset.active !== "true") {
+                    beep.play().catch(()=>{});
+                    btn.dataset.active = "true";
+                }
+            } else {
+                status.innerText = "Buscando marcações...";
+                status.style.color = "white";
+                btn.style.display = "none";
+                btn.dataset.active = "false";
+            }
 
-    let found = false;
-
-    for (let i = 0; i < contours.size(); i++) {
-      let cnt = contours.get(i);
-      let area = cv.contourArea(cnt);
-
-      if (area > 400 && area < 2500) {
-        let rect = cv.boundingRect(cnt);
-
-        ctx.strokeStyle = "lime";
-        ctx.lineWidth = 3;
-        ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
-
-        found = true;
-      }
+            requestAnimationFrame(loop);
+        } catch (e) {
+            console.error("Erro no processamento:", e);
+            requestAnimationFrame(loop);
+        }
     }
-
-    if (found) {
-      status.innerText = "Marcações detectadas!";
-      status.style.color = "#00ff00";
-      btn.style.display = "block";
-      beep.play().catch(()=>{});
-    } else {
-      status.innerText = "Buscando marcações...";
-      status.style.color = "white";
-      btn.style.display = "none";
-    }
-
-    requestAnimationFrame(loop);
-  }
-
-  loop();
+    loop();
 }
 
 btn.onclick = () => {
-  alert("OMR capturado com sucesso!");
+    alert("Gabarito capturado! Processando acertos...");
 };
-
-cv['onRuntimeInitialized'] = startCamera;
 </script>
 
 </body>
