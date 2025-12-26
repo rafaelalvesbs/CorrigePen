@@ -3,148 +3,114 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Corrigir Gabarito</title>
+    <title>Scanner de Gabarito</title>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; font-family: system-ui, sans-serif; }
-        body {
-            min-height: 100vh;
-            background: linear-gradient(160deg, #998675 0%, #b2a18f 45%, #e8e2dc 100%);
-            display: flex; justify-content: center; align-items: center; padding: 20px;
-        }
-        .screen {
-            width: 100%; max-width: 380px; min-height: 550px;
-            background: rgba(255,255,255,0.95);
-            display: flex; flex-direction: column;
-            border: 3px solid #998675; border-radius: 20px;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.15); overflow: hidden;
-        }
-        .header { padding: 30px 24px 10px; text-align: center; }
-        .header h1 { font-size: 20px; color: #3f362d; }
-        .content { flex: 1; padding: 20px; display: flex; flex-direction: column; gap: 15px; }
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: sans-serif; }
+        body { background: #000; overflow: hidden; color: white; text-align: center; }
         
-        /* Área da Câmera/Foto */
-        #upload-area {
-            width: 100%; height: 200px; border: 2px dashed #998675;
-            border-radius: 15px; display: flex; flex-direction: column;
-            align-items: center; justify-content: center; background: #fdfcfb;
-            cursor: pointer; position: relative;
+        /* Container do Vídeo */
+        #video-container { position: relative; width: 100vw; height: 100vh; }
+        video { width: 100%; height: 100%; object-fit: cover; }
+        
+        /* Overlay de Scanner */
+        .scan-overlay {
+            position: absolute; top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            width: 80%; height: 60%;
+            border: 2px solid rgba(255,255,255,0.5);
+            border-radius: 15px;
+            box-shadow: 0 0 0 1000px rgba(0,0,0,0.6);
         }
-        #preview { width: 100%; height: 100%; object-fit: contain; display: none; border-radius: 12px; }
-        
-        .result-box {
-            background: #fff; padding: 15px; border-radius: 12px;
-            border: 1px solid #d6cfc8; display: none;
+
+        /* Pontos verdes animados (Simulação de detecção) */
+        .dot {
+            position: absolute; width: 15px; height: 15px;
+            background: #00ff00; border-radius: 50%;
+            box-shadow: 0 0 10px #00ff00; display: none;
         }
-        .score { font-size: 24px; font-weight: bold; color: #998675; text-align: center; display: block; }
+
+        .status-bar {
+            position: absolute; top: 20px; width: 100%;
+            padding: 10px; background: rgba(0,0,0,0.7);
+        }
         
-        .footer { padding: 20px; display: flex; flex-direction: column; gap: 10px; }
-        button { width: 100%; height: 48px; border: none; border-radius: 12px; font-size: 16px; font-weight: 600; cursor: pointer; }
-        .btn-main { background: #998675; color: #fff; }
-        .btn-off { background: #e6e0da; color: #4b423a; }
-        
-        #file-input { display: none; }
+        .btn-capture {
+            position: absolute; bottom: 40px; left: 50%;
+            transform: translateX(-50%);
+            padding: 15px 40px; border-radius: 30px;
+            border: none; background: #998675; color: white;
+            font-weight: bold; font-size: 16px; cursor: pointer;
+        }
     </style>
 </head>
 <body>
 
-<div class="screen">
-    <header class="header">
-        <h1 id="nome-prova">Carregando prova...</h1>
-        <p style="font-size: 13px; color: #6b5f55;">Capture a foto do gabarito do aluno</p>
-    </header>
+<div id="video-container">
+    <video id="webcam" autoplay playsinline></video>
+    <div class="scan-overlay">
+        <div id="dot1" class="dot" style="top:20%; left:30%;"></div>
+        <div id="dot2" class="dot" style="top:40%; left:70%;"></div>
+        <div id="dot3" class="dot" style="top:60%; left:40%;"></div>
+    </div>
+    
+    <div class="status-bar">
+        <h2 id="msg">Alinhe o Gabarito</h2>
+        <p id="sub-msg">Buscando marcações...</p>
+    </div>
 
-    <main class="content">
-        <label id="upload-area" for="file-input">
-            <img id="icon-cam" src="https://cdn-icons-png.flaticon.com/512/685/685655.png" width="50">
-            <span id="label-text">Toque para tirar foto</span>
-            <img id="preview">
-        </label>
-        <input type="file" id="file-input" accept="image/*" capture="environment">
-
-        <div id="result-area" class="result-box">
-            <p style="text-align:center; font-size: 14px; color: #6b5f55;">Total de Acertos:</p>
-            <span id="score-val" class="score">0 / 0</span>
-        </div>
-    </main>
-
-    <footer class="footer">
-        <button id="btn-finalizar" class="btn-main" style="display: none;">Salvar e Ver Notas</button>
-        <button onclick="history.back()" class="btn-off">Voltar</button>
-    </footer>
+    <button id="btn-processar" class="btn-capture" style="display:none;">PROCESSAR NOTA</button>
 </div>
 
+<audio id="beep" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3"></audio>
+
 <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js";
-    import { getDatabase, ref, get } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-database.js";
+    const video = document.getElementById('webcam');
+    const msg = document.getElementById('msg');
+    const dots = document.querySelectorAll('.dot');
+    const beep = document.getElementById('beep');
+    const btn = document.getElementById('btn-processar');
 
-    const firebaseConfig = {
-        apiKey: "AIzaSyCZ77ugK5a3pw-U0NH43F2x1bu09sS5pJg",
-        authDomain: "correcao-de-provas-f315d.firebaseapp.com",
-        projectId: "correcao-de-provas-f315d",
-        databaseURL: "https://correcao-de-provas-f315d-default-rtdb.firebaseio.com",
-    };
-
-    const app = initializeApp(firebaseConfig);
-    const db = getDatabase(app);
-
-    const params = new URLSearchParams(window.location.search);
-    const provaId = params.get("provaId");
-
-    let gabaritoOficial = null;
-    let totalQuestoes = 0;
-
-    // 1. Carregar dados da prova
-    async function carregarDados() {
-        if (!provaId) return alert("Erro: ID da prova não encontrado.");
-        
-        const snapGabarito = await get(ref(db, `gabaritos/${provaId}`));
-        const snapProva = await get(ref(db, `provas/${provaId}`));
-
-        if (snapGabarito.exists() && snapProva.exists()) {
-            gabaritoOficial = snapGabarito.val();
-            totalQuestoes = snapProva.val().quantidade;
-            document.getElementById("nome-prova").innerText = snapProva.val().nome;
+    // Iniciar Câmera
+    async function startCamera() {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { facingMode: "environment" } 
+            });
+            video.srcObject = stream;
+            setTimeout(simularDeteccao, 2000);
+        } catch (err) {
+            alert("Erro ao acessar câmera: " + err);
         }
     }
 
-    // 2. Simular leitura do gabarito (via foto)
-    document.getElementById("file-input").onchange = function(e) {
-        const file = e.target.files[0];
-        if (!file) return;
-
-        // Mostrar preview da foto
-        const reader = new FileReader();
-        reader.onload = function(event) {
-            document.getElementById("preview").src = event.target.result;
-            document.getElementById("preview").style.display = "block";
-            document.getElementById("icon-cam").style.display = "none";
-            document.getElementById("label-text").style.display = "none";
-            
-            processarCorrecao();
-        };
-        reader.readAsDataURL(file);
-    };
-
-    function processarCorrecao() {
-        // NOTA: Para uma correção real automática, você precisaria de uma biblioteca 
-        // pesada como OpenCV.js. Aqui vamos simular que o sistema leu e comparou.
+    // Simulação visual da detecção de bolinhas
+    function simularDeteccao() {
+        msg.innerText = "Gabarito Identificado!";
+        msg.style.color = "#00ff00";
         
-        let acertos = Math.floor(Math.random() * (totalQuestoes + 1)); // Simulação de correção
-        
-        document.getElementById("result-area").style.display = "block";
-        document.getElementById("score-val").innerText = `${acertos} / ${totalQuestoes}`;
-        document.getElementById("btn-finalizar").style.display = "block";
+        // Ativa os pontos verdes um a um com som
+        dots.forEach((dot, index) => {
+            setTimeout(() => {
+                dot.style.display = 'block';
+                beep.currentTime = 0;
+                beep.play();
+            }, index * 400);
+        });
 
-        // Salva temporariamente no sessionStorage para a próxima tela
-        sessionStorage.setItem("ultimaNota", acertos);
-        sessionStorage.setItem("totalQuestoes", totalQuestoes);
+        setTimeout(() => {
+            btn.style.display = 'block';
+        }, 1500);
     }
 
-    document.getElementById("btn-finalizar").onclick = () => {
-        window.location.href = `acertosdoaluno.html?provaId=${provaId}`;
+    btn.onclick = () => {
+        const params = new URLSearchParams(window.location.search);
+        const provaId = params.get("provaId");
+        // Aqui simulamos o cálculo da nota obtida
+        const notaSimulada = Math.floor(Math.random() * 10); 
+        window.location.href = `acertosdoaluno.html?provaId=${provaId}&nota=${notaSimulada}`;
     };
 
-    carregarDados();
+    startCamera();
 </script>
 </body>
 </html>
