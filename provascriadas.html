@@ -20,39 +20,22 @@ body {
   background: linear-gradient(160deg,#998675 0%,#b2a18f 45%,#e8e2dc 100%);
   display: flex;
   justify-content: center;
+  align-items: center; /* Centraliza o painel verticalmente no desktop */
+  padding: 20px; /* Espaço para não encostar nas bordas do navegador */
 }
 
-html, body {
-  height: 100%;
-  margin: 0;
-}
-
-body {
-  display: flex;
-  justify-content: center;
-  align-items: stretch;
-  min-height: 100vh; /* garante altura mínima */
-}
-
-/* CONTAINER PRINCIPAL */
+/* CONTAINER PRINCIPAL (ELÁSTICO) */
 .screen {
   width: 100%;
-  max-width: 380px;
+  max-width: 1100px; /* Aumentado para o desktop mostrar a tabela */
+  background: rgba(255,255,255,0.95);
   display: flex;
   flex-direction: column;
+  overflow: hidden;
   border-radius: 16px;
   border: 3px solid #998675;
-  background: rgba(255,255,255,0.95);
   box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-  min-height: 100vh;      /* importante para desktop */
-  height: 100dvh;         /* importante para mobile */
-}
-
-/* Mobile: mantém altura limitada e scroll interno */
-@media (max-width: 768px) {
-  .screen {
-    height: 100dvh; /* altura do mobile com scroll interno */
-  }
+  max-height: 90vh; /* Não deixa o painel ser maior que a altura da tela */
 }
 
 /* HEADER */
@@ -84,12 +67,13 @@ body {
   border-radius: 8px;
   border: 1px solid #998675;
   font-size: 14px;
+  background: white;
 }
 
-/* CONTEÚDO (ÚNICO SCROLL DA TELA) */
+/* CONTEÚDO */
 .content {
-  flex: 1 1 auto;         /* permite ocupar todo o espaço entre header e footer */
-  overflow-y: auto;       /* scroll só na área de conteúdo */
+  flex: 1;
+  overflow: auto; /* Scroll interno se houver muitas provas */
   padding: 16px;
 }
 
@@ -97,7 +81,6 @@ body {
 table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 760px;
 }
 
 th, td {
@@ -110,6 +93,8 @@ th, td {
 th {
   background: #f3f0ed;
   color: #3f362d;
+  position: sticky; /* Mantém o cabeçalho no topo ao rolar */
+  top: 0;
 }
 
 td {
@@ -123,6 +108,11 @@ button {
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+button:hover {
+  opacity: 0.8;
 }
 
 .ver {
@@ -145,6 +135,9 @@ button {
 
 .footer button {
   width: 100%;
+  max-width: 300px; /* No desktop o botão não fica gigante */
+  margin: 0 auto;
+  display: block;
   height: 50px;
   border-radius: 14px;
   font-size: 16px;
@@ -167,38 +160,29 @@ button {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  border: 1px solid #eee;
 }
 
-.card h3 {
-  font-size: 16px;
-  color: #3f362d;
-}
-
-.card p {
-  font-size: 13px;
-  color: #5a5047;
-}
-
-.card .actions {
-  display: flex;
-  gap: 8px;
-  margin-top: 8px;
-}
-
-.card button {
-  flex: 1;
-  height: 38px;
-  border-radius: 10px;
-}
-
-/* RESPONSIVO */
+/* RESPONSIVO MOBILE */
 @media (max-width: 768px) {
+  body {
+    padding: 0;
+  }
+  .screen {
+    max-width: 380px; /* No celular volta a ser estilo app */
+    height: 100vh;
+    border-radius: 0;
+    max-height: 100vh;
+  }
   table {
     display: none;
   }
   .cards {
     display: flex;
     flex-direction: column;
+  }
+  .footer button {
+    max-width: 100%;
   }
 }
 </style>
@@ -209,10 +193,9 @@ button {
 
   <header class="header">
     <h1>Minhas Provas</h1>
-    <p class="subtitle">Provas criadas</p>
+    <p class="subtitle">Gerenciamento de exames</p>
   </header>
 
-  <!-- FILTRO DE DISCIPLINA -->
   <div class="filter-container">
     <label for="filtroDisciplina">Filtrar por disciplina:</label>
     <select id="filtroDisciplina">
@@ -252,7 +235,6 @@ button {
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js";
 import { getDatabase, ref, get, remove } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-database.js";
 
-/* FIREBASE */
 const firebaseConfig = {
   apiKey: "AIzaSyCZ77ugK5a3pw-U0NH43F2x1bu09sS5pJg",
   authDomain: "correcao-de-provas-f315d.firebaseapp.com",
@@ -267,23 +249,13 @@ const lista = document.getElementById("listaProvas");
 const cards = document.getElementById("cardsProvas");
 const filtro = document.getElementById("filtroDisciplina");
 
-/* MAPAS PARA EXIBIÇÃO LEGÍVEL */
 const semestreMap = {
-  "1": "Semestre 1",
-  "2": "Semestre 2",
-  "3": "Semestre 3",
-  "4": "Semestre 4",
-  "5": "Semestre 5",
-  "6": "Semestre 6",
-  "7": "Semestre 7",
-  "intermediario": "Intermediário"
+  "1": "Semestre 1", "2": "Semestre 2", "3": "Semestre 3",
+  "4": "Semestre 4", "5": "Semestre 5", "6": "Semestre 6",
+  "7": "Semestre 7", "intermediario": "Intermediário"
 };
 
-const tipoMap = {
-  "A": "Tipo A",
-  "B": "Tipo B",
-  "C": "Tipo C"
-};
+const tipoMap = { "A": "Tipo A", "B": "Tipo B", "C": "Tipo C" };
 
 async function carregarProvas() {
   lista.innerHTML = "";
@@ -291,8 +263,8 @@ async function carregarProvas() {
 
   const snap = await get(ref(db, "provas"));
   if (!snap.exists()) {
-    lista.innerHTML = `<tr><td colspan="8">Nenhuma prova criada.</td></tr>`;
-    cards.innerHTML = `<p style="text-align:center;color:#666;">Nenhuma prova criada.</p>`;
+    lista.innerHTML = `<tr><td colspan="8" style="text-align:center">Nenhuma prova encontrada.</td></tr>`;
+    cards.innerHTML = `<p style="text-align:center;color:#666;">Nenhuma prova encontrada.</p>`;
     return;
   }
 
@@ -300,8 +272,6 @@ async function carregarProvas() {
 
   Object.entries(snap.val()).forEach(([id, prova]) => {
     const curso = prova.disciplina || prova.cursoSelecionado || "-";
-
-    // Aplique o filtro
     if (disciplinaSelecionada !== "Todas" && curso !== disciplinaSelecionada) return;
 
     const questoes = prova.quantidade || prova.qtdQuestoes || "-";
@@ -309,6 +279,7 @@ async function carregarProvas() {
     const semestreExibido = semestreMap[prova.semestre] || prova.semestre || "-";
     const tipoExibido = tipoMap[prova.tipo] || prova.tipo || "-";
 
+    // Inserir na Tabela (Desktop)
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td>${prova.nome || "-"}</td>
@@ -319,53 +290,48 @@ async function carregarProvas() {
       <td>${prova.criador || "-"}</td>
       <td>${data}</td>
       <td>
-        <button class="ver">Ver QR</button>
-        <button class="excluir">Excluir</button>
+        <button class="ver" data-id="${id}">Ver QR</button>
+        <button class="excluir" data-id="${id}">Excluir</button>
       </td>
     `;
-
-    tr.querySelector(".ver").onclick = () =>
-      location.href = `qr.html?provaId=${id}`;
-
-    tr.querySelector(".excluir").onclick = async () => {
-      if (confirm("Excluir esta prova?")) {
-        await remove(ref(db, `provas/${id}`));
-        await remove(ref(db, `gabaritos/${id}`));
-        carregarProvas();
-      }
-    };
-
     lista.appendChild(tr);
 
+    // Inserir no Card (Mobile)
     const card = document.createElement("div");
     card.className = "card";
     card.innerHTML = `
       <h3>${prova.nome || "-"}</h3>
       <p><strong>Curso:</strong> ${curso}</p>
-      <p><strong>Semestre:</strong> ${semestreExibido}</p>
-      <p><strong>Tipo:</strong> ${tipoExibido}</p>
+      <p><strong>Semestre:</strong> ${semestreExibido} | <strong>Tipo:</strong> ${tipoExibido}</p>
       <p><strong>Questões:</strong> ${questoes}</p>
       <p><strong>Data:</strong> ${data}</p>
       <div class="actions">
-        <button class="ver">Ver QR</button>
-        <button class="excluir">Excluir</button>
+        <button class="ver" data-id="${id}">Ver QR</button>
+        <button class="excluir" data-id="${id}">Excluir</button>
       </div>
     `;
-
-    card.querySelector(".ver").onclick = () =>
-      location.href = `qr.html?provaId=${id}`;
-
-    card.querySelector(".excluir").onclick = tr.querySelector(".excluir").onclick;
-
     cards.appendChild(card);
+  });
+
+  // Delegar eventos para os botões (funciona em tabela e cards)
+  document.querySelectorAll(".ver").forEach(btn => {
+    btn.onclick = () => location.href = `qr.html?provaId=${btn.dataset.id}`;
+  });
+
+  document.querySelectorAll(".excluir").forEach(btn => {
+    btn.onclick = async () => {
+      if (confirm("Deseja realmente excluir esta prova?")) {
+        const id = btn.dataset.id;
+        await remove(ref(db, `provas/${id}`));
+        await remove(ref(db, `gabaritos/${id}`));
+        carregarProvas();
+      }
+    };
   });
 }
 
-// Recarregar quando o filtro mudar
 filtro.addEventListener("change", carregarProvas);
-
-document.getElementById("btnNovaProva").onclick = () =>
-  location.href = "dashboard.html";
+document.getElementById("btnNovaProva").onclick = () => location.href = "dashboard.html";
 
 carregarProvas();
 </script>
