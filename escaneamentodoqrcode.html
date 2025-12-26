@@ -146,7 +146,7 @@ const qrReader = document.getElementById("qr-reader");
 const loader = document.getElementById("loader");
 const retryBtn = document.getElementById("retry-btn");
 
-let scanner;
+let scanner = null;
 let jaLeu = false;
 
 /* 🔊 Beep em JS puro */
@@ -156,8 +156,8 @@ function beep() {
   const gain = ctx.createGain();
 
   osc.type = "sine";
-  osc.frequency.value = 880;
-  gain.gain.value = 0.1;
+  osc.frequency.value = 900;
+  gain.gain.value = 0.15;
 
   osc.connect(gain);
   gain.connect(ctx.destination);
@@ -166,35 +166,37 @@ function beep() {
   setTimeout(() => {
     osc.stop();
     ctx.close();
-  }, 150);
+  }, 120);
 }
 
 async function iniciarScanner() {
   jaLeu = false;
+
   cameraBtn.style.display = "none";
   retryBtn.style.display = "none";
-  qrReader.style.display = "none";
   loader.style.display = "block";
 
-  scanner = new Html5Qrcode("qr-reader");
+  // ⚠️ IMPORTANTE: mostrar antes de iniciar
+  qrReader.style.display = "block";
 
-  try {
-    const cameras = await Html5Qrcode.getCameras();
-    if (!cameras.length) throw "Nenhuma câmera encontrada";
-
+  // pequeno delay só para UX
+  setTimeout(async () => {
     loader.style.display = "none";
-    qrReader.style.display = "block";
 
-    await scanner.start(
-      cameras[cameras.length - 1].id, // geralmente a traseira
-      { fps: 10, qrbox: 250 },
-      onScanSuccess
-    );
+    scanner = new Html5Qrcode("qr-reader");
 
-  } catch (err) {
-    alert("Não foi possível acessar a câmera.");
-    console.error(err);
-  }
+    try {
+      await scanner.start(
+        { facingMode: { exact: "environment" } },
+        { fps: 10, qrbox: 250 },
+        onScanSuccess
+      );
+    } catch (err) {
+      console.error(err);
+      alert("Erro ao acessar a câmera. Abra no navegador do celular.");
+      retryBtn.style.display = "block";
+    }
+  }, 300);
 }
 
 function onScanSuccess(text) {
@@ -206,7 +208,7 @@ function onScanSuccess(text) {
 
   scanner.stop().then(() => {
     window.location.href =
-      `escaneamentodogabarito.html?gabaritoId=${text}`;
+      `escaneamentodogabarito.html?gabaritoId=${encodeURIComponent(text)}`;
   });
 }
 
@@ -216,3 +218,4 @@ retryBtn.addEventListener("click", iniciarScanner);
 
 </body>
 </html>
+
