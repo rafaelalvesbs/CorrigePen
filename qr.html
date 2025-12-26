@@ -90,7 +90,6 @@ if (!provaId) {
 
 async function carregarQR() {
   const provaSnap = await get(ref(db, `provas/${provaId}`));
-  const gabaritoSnap = await get(ref(db, `gabaritos/${provaId}`));
 
   if (!provaSnap.exists()) {
     alert("Prova não encontrada.");
@@ -98,7 +97,6 @@ async function carregarQR() {
   }
 
   const prova = provaSnap.val();
-  const gabarito = gabaritoSnap.exists() ? gabaritoSnap.val() : {};
 
   if (!prova.pin) {
     alert("QR ainda não foi gerado para esta prova.");
@@ -107,14 +105,7 @@ async function carregarQR() {
 
   pinEl.textContent = prova.pin;
 
-  const payload = {
-    provaId,
-    prova,
-    gabarito,
-    pin: prova.pin
-  };
-
-  await QRCode.toCanvas(canvas, JSON.stringify(payload), {
+  await QRCode.toCanvas(canvas, provaId, {
     width: 220,
     margin: 1
   });
@@ -129,4 +120,3 @@ btnVoltar.onclick = () => {
 
 </body>
 </html>
-
