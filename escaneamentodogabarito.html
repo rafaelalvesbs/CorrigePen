@@ -1,186 +1,139 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Scanner OMR Pro</title>
-    <script async src="https://docs.opencv.org/4.5.4/opencv.js" type="text/javascript"></script>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; font-family: sans-serif; }
-        body { background: #000; color: white; overflow: hidden; }
-        .container { position: relative; width: 100vw; height: 100vh; }
-        #video-feed { width: 100%; height: 100%; object-fit: cover; }
-        #canvas-output { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
-        
-        .guide {
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            width: 75%; height: 55%; border: 3px solid #00ff00;
-            border-radius: 15px; pointer-events: none; box-shadow: 0 0 0 1000px rgba(0,0,0,0.5);
-        }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scanner OMR</title>
 
-        .status-panel {
-            position: absolute; top: 30px; width: 100%; text-align: center;
-            background: rgba(0,0,0,0.8); padding: 20px; z-index: 10;
-        }
+<script async src="https://docs.opencv.org/4.5.4/opencv.js"></script>
 
-        #loading-cv {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: #998675; display: flex; flex-direction: column;
-            justify-content: center; align-items: center; z-index: 100;
-        }
-
-        .btn-scan {
-            position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%);
-            padding: 20px 50px; background: #00ff00; border: none;
-            color: #000; border-radius: 40px; font-weight: 900; font-size: 20px;
-            box-shadow: 0 0 20px rgba(0,255,0,0.5); display: none; cursor: pointer;
-        }
-    </style>
+<style>
+body {
+  margin: 0;
+  background: black;
+  overflow: hidden;
+}
+video, canvas {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+#status {
+  position: fixed;
+  top: 20px;
+  width: 100%;
+  text-align: center;
+  color: white;
+  font-size: 18px;
+  z-index: 10;
+}
+#btn {
+  position: fixed;
+  bottom: 30px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 20px 50px;
+  font-size: 20px;
+  border-radius: 40px;
+  background: #00ff00;
+  border: none;
+  display: none;
+}
+</style>
 </head>
+
 <body>
 
-<div id="loading-cv">
-    <p>Carregando Inteligência Visual...</p>
-</div>
+<div id="status">Buscando marcações...</div>
+<video id="video" autoplay playsinline></video>
+<canvas id="canvas"></canvas>
+<button id="btn">CAPTURAR</button>
 
-<div class="container">
-    <video id="video-feed" autoplay playsinline></video>
-    <canvas id="canvas-output"></canvas>
-    <div class="guide"></div>
+<audio id="beep" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3"></audio>
 
-    <div class="status-panel">
-        <h2 id="info">Buscando Gabarito...</h2>
-        <p id="sub-info">Aproxime a câmera das bolinhas</p>
-    </div>
+<script>
+const video = document.getElementById("video");
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+const status = document.getElementById("status");
+const btn = document.getElementById("btn");
+const beep = document.getElementById("beep");
 
-    <button id="btn-processar" class="btn-scan">CAPTURAR AGORA</button>
-</div>
-
-<audio id="beep-sound" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3"></audio>
-
-<script type="text/javascript">
-    const video = document.getElementById('video-feed');
-    const canvas = document.getElementById('canvas-output');
-    const btn = document.getElementById('btn-processar');
-    const beep = document.getElementById('beep-sound');
-    const info = document.getElementById('info');
-    
-    let provaId = new URLSearchParams(window.location.search).get("provaId");
-
-    // Monitor do OpenCV
-    function checkOpenCV() {
-        if (typeof cv !== 'undefined' && cv.Mat) {
-            document.getElementById('loading-cv').style.display = 'none';
-            startCamera();
-        } else {
-            setTimeout(checkOpenCV, 500);
-        }
-    }
-    checkOpenCV();
-
-    async function startCamera() {
-        try {
-            const constraints = {
-                video: { 
-                    facingMode: "environment", 
-                    width: { ideal: 640 }, // Reduzir a resolução melhora o processamento em tempo real
-                    height: { ideal: 480 } 
-                }
-            };
-            const stream = await navigator.mediaDevices.getUserMedia(constraints);
-            video.srcObject = stream;
-            video.play();
-            video.onloadedmetadata = () => processFrame();
-        } catch (err) {
-            alert("Erro na câmera: " + err);
-        }
-    }
-
-    function processFrame() {
-        // Inicialização de matrizes de memória
-        let src = new cv.Mat(video.videoHeight, video.videoWidth, cv.CV_8UC4);
-        let gray = new cv.Mat();
-        let thresh = new cv.Mat();
-        let contours = new cv.MatVector();
-        let hierarchy = new cv.Mat();
-        let cap = new cv.VideoCapture(video);
-
-        function loop() {
-            try {
-                cap.read(src);
-                cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-                
-                // Filtro de pré-processamento para remover ruído
-                cv.GaussianBlur(gray, gray, new cv.Size(5, 5), 0);
-                
-                // Limiarização Binária (Transforma tudo em Preto e Branco puro)
-                // O valor 100 pode ser ajustado: menor fica mais sensível ao escuro
-                cv.threshold(gray, thresh, 100, 255, cv.THRESH_BINARY_INV);
-                
-                // Encontrar contornos das manchas pretas
-                cv.findContours(thresh, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-
-                const ctx = canvas.getContext('2d');
-                canvas.width = video.clientWidth;
-                canvas.height = video.clientHeight;
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-                let bolinhasEncontradas = 0;
-
-                for (let i = 0; i < contours.size(); ++i) {
-                    let cnt = contours.get(i);
-                    let rect = cv.boundingRect(cnt);
-                    let aspectRatio = rect.width / rect.height;
-
-                    // FILTRO DE BOLINHA:
-                    // 1. A largura deve estar entre 15 e 60 pixels
-                    // 2. Deve ser aproximadamente um quadrado (aspectRatio entre 0.7 e 1.3)
-                    if (rect.width >= 15 && rect.width <= 60 && aspectRatio >= 0.7 && aspectRatio <= 1.3) {
-                        bolinhasEncontradas++;
-
-                        // Coordenadas para o desenho
-                        let scaleX = canvas.width / video.videoWidth;
-                        let scaleY = canvas.height / video.videoHeight;
-
-                        ctx.beginPath();
-                        ctx.arc(
-                            (rect.x + rect.width/2) * scaleX, 
-                            (rect.y + rect.height/2) * scaleY, 
-                            (rect.width/2) * scaleX, 
-                            0, 2 * Math.PI
-                        );
-                        ctx.fillStyle = "rgba(0, 255, 0, 0.6)";
-                        ctx.fill();
-                        ctx.strokeStyle = "white";
-                        ctx.stroke();
-                    }
-                }
-
-                if (bolinhasEncontradas >= 3) { // Se achar pelo menos 3 bolinhas
-                    if (btn.style.display !== 'block') {
-                        beep.play();
-                        btn.style.display = 'block';
-                    }
-                    info.innerText = bolinhasEncontradas + " MARCAÇÕES LIDAS";
-                    info.style.color = "#00ff00";
-                } else {
-                    btn.style.display = 'none';
-                    info.innerText = "BUSCANDO MARCAÇÕES...";
-                    info.style.color = "#fff";
-                }
-
-                requestAnimationFrame(loop);
-            } catch (e) {
-                console.error(e);
-                requestAnimationFrame(loop);
-            }
-        }
-        loop();
-    }
-
-    btn.onclick = () => {
-        window.location.href = `acertosdoaluno.html?provaId=${provaId}&nota=${Math.floor(Math.random() * 5) + 5}`;
+function startCamera() {
+  navigator.mediaDevices.getUserMedia({
+    video: { facingMode: "environment" }
+  }).then(stream => {
+    video.srcObject = stream;
+    video.onloadedmetadata = () => {
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      process();
     };
+  });
+}
+
+function process() {
+  let src = new cv.Mat(video.videoHeight, video.videoWidth, cv.CV_8UC4);
+  let gray = new cv.Mat();
+  let blurred = new cv.Mat();
+  let thresh = new cv.Mat();
+  let contours = new cv.MatVector();
+  let hierarchy = new cv.Mat();
+
+  const cap = new cv.VideoCapture(video);
+
+  function loop() {
+    cap.read(src);
+
+    cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+    cv.GaussianBlur(gray, blurred, new cv.Size(5,5), 0);
+    cv.threshold(blurred, thresh, 100, 255, cv.THRESH_BINARY_INV);
+
+    cv.findContours(thresh, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    let found = false;
+
+    for (let i = 0; i < contours.size(); i++) {
+      let cnt = contours.get(i);
+      let area = cv.contourArea(cnt);
+
+      if (area > 400 && area < 2500) {
+        let rect = cv.boundingRect(cnt);
+
+        ctx.strokeStyle = "lime";
+        ctx.lineWidth = 3;
+        ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
+
+        found = true;
+      }
+    }
+
+    if (found) {
+      status.innerText = "Marcações detectadas!";
+      status.style.color = "#00ff00";
+      btn.style.display = "block";
+      beep.play().catch(()=>{});
+    } else {
+      status.innerText = "Buscando marcações...";
+      status.style.color = "white";
+      btn.style.display = "none";
+    }
+
+    requestAnimationFrame(loop);
+  }
+
+  loop();
+}
+
+btn.onclick = () => {
+  alert("OMR capturado com sucesso!");
+};
+
+cv['onRuntimeInitialized'] = startCamera;
 </script>
+
 </body>
 </html>
