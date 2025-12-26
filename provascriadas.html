@@ -31,24 +31,22 @@ body {
   display: flex;
   justify-content: center;
   align-items: stretch;
+  min-height: 100vh; /* garante altura mínima */
 }
-
-
 
 /* CONTAINER PRINCIPAL */
 .screen {
   width: 100%;
   max-width: 380px;
-  background: rgba(255,255,255,0.95);
   display: flex;
   flex-direction: column;
-  overflow: hidden;
   border-radius: 16px;
   border: 3px solid #998675;
+  background: rgba(255,255,255,0.95);
   box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-  min-height: 100vh; /* garante que ocupe a tela inteira */
+  min-height: 100vh;      /* importante para desktop */
+  height: 100dvh;         /* importante para mobile */
 }
-
 
 /* Mobile: mantém altura limitada e scroll interno */
 @media (max-width: 768px) {
@@ -90,8 +88,8 @@ body {
 
 /* CONTEÚDO (ÚNICO SCROLL DA TELA) */
 .content {
-  flex: 1;
-  overflow: auto;
+  flex: 1 1 auto;         /* permite ocupar todo o espaço entre header e footer */
+  overflow-y: auto;       /* scroll só na área de conteúdo */
   padding: 16px;
 }
 
