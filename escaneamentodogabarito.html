@@ -4,45 +4,48 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Scanner OMR Inteligente</title>
-    <script async src="https://docs.opencv.org/4.5.4/opencv.js" type="text/javascript"></script>
+    <script async id="opencv-script" src="https://docs.opencv.org/4.5.4/opencv.js" type="text/javascript"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: sans-serif; }
         body { background: #1a1a1a; color: white; overflow: hidden; }
-        
         .container { position: relative; width: 100vw; height: 100vh; display: flex; flex-direction: column; }
-        
         #video-feed { width: 100%; height: 100%; object-fit: cover; }
         #canvas-output { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
-
-        /* Guia visual de enquadramento */
         .guide {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            width: 85%; height: 70%; border: 2px solid rgba(255,255,255,0.3);
-            border-radius: 10px; pointer-events: none;
+            width: 80%; height: 60%; border: 2px dashed rgba(255,255,255,0.5);
+            border-radius: 15px; pointer-events: none;
         }
-
         .status-panel {
             position: absolute; top: 40px; width: 100%; text-align: center;
-            background: rgba(0,0,0,0.6); padding: 15px;
+            background: rgba(0,0,0,0.6); padding: 15px; z-index: 10;
         }
-
         #loading-cv {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: #998675; display: flex; justify-content: center;
-            align-items: center; z-index: 100; font-weight: bold;
+            background: #998675; display: flex; flex-direction: column;
+            justify-content: center; align-items: center; z-index: 100; font-weight: bold;
         }
-
-        .controls { position: absolute; bottom: 30px; width: 100%; display: flex; justify-content: center; }
+        /* Spinner de carregamento */
+        .spinner {
+            width: 40px; height: 40px; border: 4px solid #f3f3f3;
+            border-top: 4px solid #3f362d; border-radius: 50%;
+            animation: spin 1s linear infinite; margin-bottom: 15px;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .controls { position: absolute; bottom: 30px; width: 100%; display: flex; justify-content: center; z-index: 10; }
         .btn-scan {
-            padding: 15px 35px; background: #998675; border: none;
-            color: white; border-radius: 30px; font-weight: bold; font-size: 18px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.3); display: none;
+            padding: 18px 40px; background: #00ff00; border: none;
+            color: #000; border-radius: 35px; font-weight: 800; font-size: 18px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.4); display: none; cursor: pointer;
         }
     </style>
 </head>
 <body>
 
-<div id="loading-cv">Iniciando Visão Computacional...</div>
+<div id="loading-cv">
+    <div class="spinner"></div>
+    <p>Iniciando Visão Computacional...</p>
+</div>
 
 <div class="container">
     <video id="video-feed" autoplay playsinline></video>
@@ -50,62 +53,76 @@
     <div class="guide"></div>
 
     <div class="status-panel">
-        <h2 id="info">Alinhe o Gabarito</h2>
-        <p id="sub-info">Aguardando detecção de marcações...</p>
+        <h2 id="info">Alinhando Câmera...</h2>
+        <p id="sub-info">Enquadre as bolinhas no retângulo</p>
     </div>
 
     <div class="controls">
-        <button id="btn-processar" class="btn-scan">CAPTURAR NOTA</button>
+        <button id="btn-processar" class="btn-scan">CAPTURAR ACERTOS</button>
     </div>
 </div>
 
 <audio id="beep-sound" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3"></audio>
 
-<script type="module">
+<script type="text/javascript">
     const video = document.getElementById('video-feed');
     const canvas = document.getElementById('canvas-output');
     const btn = document.getElementById('btn-processar');
     const beep = document.getElementById('beep-sound');
     const info = document.getElementById('info');
+    const loadingScreen = document.getElementById('loading-cv');
     
-    let isCVLoaded = false;
     let provaId = new URLSearchParams(window.location.search).get("provaId");
 
-    // Espera o OpenCV carregar
-    window.onOpenCvReady = () => {
-        document.getElementById('loading-cv').style.display = 'none';
-        isCVLoaded = true;
-        startCamera();
-    };
-
+    // --- FUNÇÃO PARA CARREGAR CÂMERA ---
     async function startCamera() {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ 
-                video: { facingMode: "environment", width: 1280, height: 720 } 
+                video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } } 
             });
             video.srcObject = stream;
-            processFrame();
+            video.onloadedmetadata = () => {
+                video.play();
+                processFrame();
+            };
         } catch (err) {
-            alert("Erro ao acessar câmera: " + err);
+            console.error("Erro câmera:", err);
+            alert("Não foi possível acessar a câmera. Verifique as permissões.");
         }
     }
 
-    // Processamento de imagem em tempo real
-    function processFrame() {
-        if (!isCVLoaded) return;
+    // --- MONITOR DE CARREGAMENTO DO OPENCV ---
+    function checkOpenCV() {
+        // Verifica se o objeto 'cv' existe e se está inicializado
+        if (typeof cv !== 'undefined' && cv.Mat) {
+            console.log("OpenCV Pronto!");
+            loadingScreen.style.display = 'none';
+            startCamera();
+        } else {
+            console.log("Aguardando OpenCV...");
+            setTimeout(checkOpenCV, 500); // Tenta novamente em meio segundo
+        }
+    }
 
-        const src = new cv.Mat(video.videoHeight, video.videoWidth, cv.CV_8UC4);
-        const cap = new cv.VideoCapture(video);
+    // Inicia a verificação
+    checkOpenCV();
+
+    // --- PROCESSAMENTO DE IMAGEM ---
+    function processFrame() {
+        let src = new cv.Mat(video.videoHeight, video.videoWidth, cv.CV_8UC4);
+        let gray = new cv.Mat();
+        let cap = new cv.VideoCapture(video);
 
         function loop() {
             try {
+                if (video.paused || video.ended) return;
+                
                 cap.read(src);
-                let gray = new cv.Mat();
                 cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
                 cv.GaussianBlur(gray, gray, new cv.Size(5, 5), 0);
                 
-                // Detecção de Círculos (Hough Circles)
                 let circles = new cv.Mat();
+                // HoughCircles detecta as bolinhas
                 cv.HoughCircles(gray, circles, cv.HOUGH_GRADIENT, 1, 35, 70, 30, 10, 30);
 
                 const ctx = canvas.getContext('2d');
@@ -114,33 +131,36 @@
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
 
                 if (circles.cols > 0) {
-                    info.innerText = "Gabarito Detectado";
+                    info.innerText = "Gabarito Identificado";
                     info.style.color = "#00ff00";
                     btn.style.display = 'block';
 
-                    // Desenha os pontos verdes nas bolinhas detectadas
-                    for (let i = 0; i < Math.min(circles.cols, 20); ++i) {
+                    for (let i = 0; i < Math.min(circles.cols, 30); ++i) {
                         let x = circles.data32F[i * 3];
                         let y = circles.data32F[i * 3 + 1];
                         let r = circles.data32F[i * 3 + 2];
 
-                        // Ajuste de escala para o canvas
                         let scaleX = canvas.width / video.videoWidth;
                         let scaleY = canvas.height / video.videoHeight;
 
                         ctx.beginPath();
                         ctx.arc(x * scaleX, y * scaleY, r * scaleX, 0, 2 * Math.PI);
-                        ctx.fillStyle = "rgba(0, 255, 0, 0.6)";
+                        ctx.fillStyle = "rgba(0, 255, 0, 0.5)";
                         ctx.fill();
                         ctx.strokeStyle = "white";
+                        ctx.lineWidth = 2;
                         ctx.stroke();
                     }
+                } else {
+                    info.innerText = "Buscando bolinhas...";
+                    info.style.color = "white";
                 }
-
-                gray.delete(); circles.delete();
+                
+                circles.delete();
                 requestAnimationFrame(loop);
             } catch (e) {
-                console.error(e);
+                console.log("Erro no loop:", e);
+                requestAnimationFrame(loop);
             }
         }
         loop();
@@ -148,13 +168,10 @@
 
     btn.onclick = () => {
         beep.play();
-        // Simulação de processamento final (no mundo real, aqui você compararia as posições XY com o gabarito oficial)
-        const acertos = Math.floor(Math.random() * 10) + 1; 
+        // Simulação de cálculo de nota (Pode ser substituído pela lógica real de comparação)
+        const acertos = Math.floor(Math.random() * 8) + 3; 
         window.location.href = `acertosdoaluno.html?provaId=${provaId}&nota=${acertos}`;
     };
-
-    // Callback para o script do OpenCV
-    setTimeout(() => { if(cv.Mat) onOpenCvReady(); }, 2000);
 </script>
 
 </body>
