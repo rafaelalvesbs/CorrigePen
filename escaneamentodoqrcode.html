@@ -1,232 +1,153 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Escanear QR Code da Prova</title>
-
-<style>
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-}
-
-body {
-  min-height: 100vh;
-  background: linear-gradient(160deg, #998675 0%, #b2a18f 45%, #e8e2dc 100%);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  padding: 20px;
-}
-
-.screen {
-  width: 100%;
-  max-width: 380px;
-  min-height: 500px;
-  background: rgba(255,255,255,0.95);
-  display: flex;
-  flex-direction: column;
-  border: 3px solid #998675;
-  border-radius: 20px;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.15);
-  overflow: hidden;
-}
-
-.header {
-  padding: 40px 24px 20px;
-  text-align: center;
-}
-
-.header h1 {
-  font-size: 22px;
-  color: #3f362d;
-}
-
-.subtitle {
-  font-size: 14px;
-  color: #6b5f55;
-}
-
-.content {
-  flex: 1;
-  padding: 24px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 20px;
-}
-
-#camera-btn {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 15px;
-  cursor: pointer;
-}
-
-#camera-btn img {
-  width: 100px;
-}
-
-#qr-reader {
-  width: 100%;
-  min-height: 280px;
-  border-radius: 12px;
-  border: 2px solid #998675;
-  background: #000;
-  display: none;
-}
-
-#loader {
-  width: 50px;
-  height: 50px;
-  border: 5px solid #f3f3f3;
-  border-top: 5px solid #998675;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-  display: none;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-.btn-retry {
-  width: 100%;
-  height: 50px;
-  border: none;
-  border-radius: 12px;
-  font-size: 16px;
-  font-weight: 600;
-  background: #998675;
-  color: #fff;
-  cursor: pointer;
-  display: none;
-}
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Escanear QR Code</title>
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: system-ui, sans-serif; }
+        body {
+            min-height: 100vh;
+            background: linear-gradient(160deg, #998675 0%, #b2a18f 45%, #e8e2dc 100%);
+            display: flex; justify-content: center; align-items: center; padding: 20px;
+        }
+        .screen {
+            width: 100%; max-width: 380px; min-height: 520px;
+            background: rgba(255,255,255,0.95);
+            display: flex; flex-direction: column;
+            border: 3px solid #998675; border-radius: 20px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.15); overflow: hidden;
+        }
+        .header { padding: 40px 24px 20px; text-align: center; }
+        .header h1 { font-size: 22px; color: #3f362d; }
+        .subtitle { font-size: 14px; color: #6b5f55; margin-top: 5px; }
+        .content { flex: 1; padding: 24px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; }
+        #qr-reader { width: 100%; border-radius: 12px; overflow: hidden; border: 2px solid #998675; background: #000; display: none; }
+        #loader { width: 50px; height: 50px; border: 5px solid #f3f3f3; border-top: 5px solid #998675; border-radius: 50%; animation: spin 1s linear infinite; display: none; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .footer { padding: 20px; display: flex; flex-direction: column; gap: 10px; }
+        button { width: 100%; height: 50px; border: none; border-radius: 14px; font-size: 16px; font-weight: 600; cursor: pointer; }
+        .btn-retry { background: #998675; color: #fff; display: none; }
+        .btn-back { background: #e6e0da; color: #4b423a; }
+        #camera-btn { text-align: center; cursor: pointer; }
+        #camera-btn img { width: 80px; margin-bottom: 10px; }
+    </style>
 </head>
-
 <body>
 
 <div class="screen">
-  <header class="header">
-    <h1>Escanear QR Code</h1>
-    <p class="subtitle" id="status-text">Toque abaixo para abrir a câmera</p>
-  </header>
+    <header class="header">
+        <h1>Validar Prova</h1>
+        <p class="subtitle" id="status-text">Toque abaixo para iniciar</p>
+    </header>
 
-  <main class="content">
-    <div id="camera-btn">
-      <img src="https://cdn-icons-png.flaticon.com/512/685/685655.png">
-      <p style="color:#998675;font-weight:bold;">CLIQUE PARA ESCANEAR</p>
-    </div>
+    <main class="content">
+        <div id="camera-btn">
+            <img src="https://cdn-icons-png.flaticon.com/512/685/685655.png">
+            <p style="color:#998675; font-weight:bold;">ABRIR CÂMERA</p>
+        </div>
+        <div id="loader"></div>
+        <div id="qr-reader"></div>
+    </main>
 
-    <div id="loader"></div>
-    <div id="qr-reader"></div>
-    <button id="retry-btn" class="btn-retry">Tentar novamente</button>
-  </main>
+    <footer class="footer">
+        <button id="retry-btn" class="btn-retry">Tentar Novamente</button>
+        <button id="back-btn" class="btn-back">Voltar ao Início</button>
+    </footer>
 </div>
 
-<script src="https://unpkg.com/html5-qrcode@2.3.9/minified/html5-qrcode.min.js"></script>
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js";
+    import { getDatabase, ref, get, child } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-database.js";
 
-<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
-<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+    const firebaseConfig = {
+        apiKey: "AIzaSyCZ77ugK5a3pw-U0NH43F2x1bu09sS5pJg",
+        authDomain: "correcao-de-provas-f315d.firebaseapp.com",
+        projectId: "correcao-de-provas-f315d",
+        databaseURL: "https://correcao-de-provas-f315d-default-rtdb.firebaseio.com",
+    };
 
-<script>
-const firebaseConfig = {
-  apiKey: "SUA_API_KEY",
-  authDomain: "correcao-de-provas-f315d.firebaseapp.com",
-  databaseURL: "https://correcao-de-provas-f315d-default-rtdb.firebaseio.com",
-  projectId: "correcao-de-provas-f315d"
-};
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
 
-firebase.initializeApp(firebaseConfig);
-const database = firebase.database();
+    const statusText = document.getElementById("status-text");
+    const loader = document.getElementById("loader");
+    const qrReader = document.getElementById("qr-reader");
+    const cameraBtn = document.getElementById("camera-btn");
+    const retryBtn = document.getElementById("retry-btn");
 
-const cameraBtn = document.getElementById("camera-btn");
-const qrReader = document.getElementById("qr-reader");
-const loader = document.getElementById("loader");
-const retryBtn = document.getElementById("retry-btn");
-const statusText = document.getElementById("status-text");
+    let scanner = null;
 
-let scanner = null;
-let scannerAtivo = false;
+    async function iniciarScanner() {
+        // Limpa erros anteriores
+        statusText.style.color = "#6b5f55";
+        cameraBtn.style.display = "none";
+        retryBtn.style.display = "none";
+        loader.style.display = "block";
+        qrReader.style.display = "block";
+        statusText.innerText = "Acessando câmera...";
 
-/* BEEP */
-function beep() {
-  const ctx = new (window.AudioContext || window.webkitAudioContext)();
-  const osc = ctx.createOscillator();
-  osc.frequency.value = 900;
-  osc.connect(ctx.destination);
-  osc.start();
-  setTimeout(() => { osc.stop(); ctx.close(); }, 120);
-}
+        if (!scanner) {
+            scanner = new Html5Qrcode("qr-reader");
+        }
 
-async function iniciarScanner() {
-  cameraBtn.style.display = "none";
-  retryBtn.style.display = "none";
-  loader.style.display = "block";
-  qrReader.style.display = "block";
-  statusText.innerText = "Acessando câmera...";
-
-  if (!scanner) scanner = new Html5Qrcode("qr-reader");
-
-  try {
-    scannerAtivo = true;
-    await scanner.start(
-      { facingMode: "environment" },
-      { fps: 10, qrbox: 250 },
-      onScanSuccess
-    );
-    loader.style.display = "none";
-    statusText.innerText = "Aponte para o QR Code da prova";
-  } catch {
-    resetarInterface("Erro ao acessar a câmera.");
-  }
-}
-
-async function onScanSuccess(qrValue) {
-  if (!scannerAtivo) return;
-  scannerAtivo = false;
-
-  beep();
-  if (navigator.vibrate) navigator.vibrate(200);
-  statusText.innerText = "Validando QR Code...";
-
-  await scanner.stop();
-
-  try {
-    const snap = await database.ref(`qrcodes/${qrValue}`).once("value");
-
-    if (!snap.exists()) {
-      resetarInterface("QR Code inválido.");
-      return;
+        try {
+            await scanner.start(
+                { facingMode: "environment" },
+                { fps: 10, qrbox: { width: 250, height: 250 } },
+                onScanSuccess
+            );
+            loader.style.display = "none";
+            statusText.innerText = "Aponte para o QR Code";
+        } catch (err) {
+            console.error(err);
+            resetarInterface("Erro: Câmera não encontrada ou sem permissão.");
+        }
     }
 
-    const provaId = snap.val().provaId;
-    window.location.href =
-      `escaneamentodogabarito.html?provaId=${encodeURIComponent(provaId)}`;
+    async function onScanSuccess(qrValue) {
+        try {
+            // Para a câmera imediatamente após ler
+            await scanner.stop();
+            loader.style.display = "block";
+            statusText.innerText = "Validando prova...";
 
-  } catch {
-    resetarInterface("Erro ao validar QR Code.");
-  }
-}
+            // No seu código de geração, você salva em 'provas/ID'
+            const dbRef = ref(db);
+            const snapshot = await get(child(dbRef, `provas/${qrValue}`));
 
-function resetarInterface(msg) {
-  scannerAtivo = false;
-  loader.style.display = "none";
-  qrReader.style.display = "none";
-  cameraBtn.style.display = "flex";
-  retryBtn.style.display = "block";
-  statusText.innerText = msg;
-}
+            if (snapshot.exists()) {
+                statusText.innerText = "Sucesso!";
+                statusText.style.color = "green";
+                // Redireciona
+                window.location.href = `escaneamentodogabarito.html?provaId=${qrValue}`;
+            } else {
+                resetarInterface("QR Code não cadastrado no sistema.");
+            }
+        } catch (err) {
+            resetarInterface("Erro na validação. Tente novamente.");
+        }
+    }
 
-cameraBtn.onclick = iniciarScanner;
-retryBtn.onclick = iniciarScanner;
+    function resetarInterface(msg) {
+        if(scanner) scanner.stop().catch(() => {});
+        loader.style.display = "none";
+        qrReader.style.display = "none";
+        cameraBtn.style.display = "block";
+        retryBtn.style.display = "block";
+        statusText.innerText = msg;
+        statusText.style.color = "red";
+    }
+
+    // Botão Voltar
+    document.getElementById("back-btn").onclick = () => {
+        if(scanner) scanner.stop().catch(() => {});
+        window.location.href = "dashboard.html";
+    };
+
+    cameraBtn.onclick = iniciarScanner;
+    retryBtn.onclick = iniciarScanner;
 </script>
-
 </body>
 </html>
