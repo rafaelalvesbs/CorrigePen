@@ -165,56 +165,29 @@
     const firebaseConfig = {
       apiKey: "AIzaSyCZ77ugK5a3pw-U0NH43F2x1bu09sS5pJg",
       authDomain: "correcao-de-provas-f315d.firebaseapp.com",
-      projectId: "correcao-de-provas-f315d",
-      databaseURL: "https://correcao-de-provas-f315d-default-rtdb.firebaseio.com"
+      projectId: "correcao-de-provas-f315d"
     };
 
     firebase.initializeApp(firebaseConfig);
     const auth = firebase.auth();
-    const database = firebase.database();
 
-    // Variável para armazenar o tipo do usuário
-    let tipoUsuarioGlobal = "";
-
-    // 🔒 Proteção de rota e busca de dados em um único bloco
-    auth.onAuthStateChanged(async (user) => {
+    // 🔒 Proteção de rota: se não estiver logado, volta pro login
+    auth.onAuthStateChanged((user) => {
       if (!user) {
         window.location.href = "login.html";
-      } else {
-        try {
-          // Busca o tipo de usuário no banco de dados assim que logar
-          const snapshot = await database.ref(`usuarios/${user.uid}/tipo`).once('value');
-          if (snapshot.exists()) {
-            tipoUsuarioGlobal = snapshot.val();
-            console.log("Tipo de usuário carregado:", tipoUsuarioGlobal);
-          }
-        } catch (error) {
-          console.error("Erro ao buscar tipo de usuário:", error);
-        }
       }
     });
 
-    // ➕ Lógica do Botão Criar (Redirecionamento Inteligente)
+    // Navegação do Dashboard
     document.getElementById("btnCriar").addEventListener("click", () => {
-      if (!tipoUsuarioGlobal) {
-        alert("Carregando permissões... tente novamente em um segundo.");
-        return;
-      }
-
-      if (tipoUsuarioGlobal === "coord_ing") {
-        window.location.href = "criacaodeprovadeingles.html";
-      } else {
-        // Redireciona para criacaodeprova.html (padrão para coord_esp)
-        window.location.href = "criacaodeprova.html";
-      }
+      window.location.href = "criacaodeprova.html";
     });
 
-    // 📄 Botão Provas Criadas
     document.getElementById("btnProvas").addEventListener("click", () => {
       window.location.href = "provascriadas.html";
     });
 
-    // 🚪 Logout
+    // Logout
     document.getElementById("btnLogout").addEventListener("click", () => {
       auth.signOut().then(() => {
         window.location.href = "login.html";
