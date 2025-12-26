@@ -130,29 +130,22 @@ body {
   </main>
 </div>
 
-<!-- QR CODE -->
-<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="https://unpkg.com/html5-qrcode@2.3.9/minified/html5-qrcode.min.js"></script>
 
-<!-- FIREBASE -->
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
 
 <script>
-/* 🔥 CONFIG FIREBASE */
 const firebaseConfig = {
   apiKey: "SUA_API_KEY",
   authDomain: "correcao-de-provas-f315d.firebaseapp.com",
   databaseURL: "https://correcao-de-provas-f315d-default-rtdb.firebaseio.com",
-  projectId: "correcao-de-provas-f315d",
-  storageBucket: "correcao-de-provas-f315d.appspot.com",
-  messagingSenderId: "SEU_ID",
-  appId: "SEU_APP_ID"
+  projectId: "correcao-de-provas-f315d"
 };
 
 firebase.initializeApp(firebaseConfig);
 const database = firebase.database();
 
-/* ELEMENTOS */
 const cameraBtn = document.getElementById("camera-btn");
 const qrReader = document.getElementById("qr-reader");
 const loader = document.getElementById("loader");
@@ -160,6 +153,7 @@ const retryBtn = document.getElementById("retry-btn");
 const statusText = document.getElementById("status-text");
 
 let scanner = null;
+let scannerAtivo = false;
 
 /* BEEP */
 function beep() {
@@ -181,55 +175,57 @@ async function iniciarScanner() {
   if (!scanner) scanner = new Html5Qrcode("qr-reader");
 
   try {
+    scannerAtivo = true;
     await scanner.start(
       { facingMode: "environment" },
-      { fps: 15, qrbox: 250 },
+      { fps: 10, qrbox: 250 },
       onScanSuccess
     );
     loader.style.display = "none";
     statusText.innerText = "Aponte para o QR Code da prova";
-  } catch (e) {
-    alert("Erro ao acessar câmera");
-    resetarInterface();
+  } catch {
+    resetarInterface("Erro ao acessar a câmera.");
   }
 }
 
 async function onScanSuccess(qrValue) {
+  if (!scannerAtivo) return;
+  scannerAtivo = false;
+
   beep();
   if (navigator.vibrate) navigator.vibrate(200);
   statusText.innerText = "Validando QR Code...";
 
-  try {
-    const snapshot = await database.ref(`qrcodes/${qrValue}`).once("value");
+  await scanner.stop();
 
-    if (!snapshot.exists()) {
-      alert("QR Code inválido.");
-      resetarInterface();
+  try {
+    const snap = await database.ref(`qrcodes/${qrValue}`).once("value");
+
+    if (!snap.exists()) {
+      resetarInterface("QR Code inválido.");
       return;
     }
 
-    const provaId = snapshot.val().provaId;
-
-    await scanner.stop();
+    const provaId = snap.val().provaId;
     window.location.href =
       `escaneamentodogabarito.html?provaId=${encodeURIComponent(provaId)}`;
 
-  } catch (err) {
-    alert("Erro ao validar QR.");
-    resetarInterface();
+  } catch {
+    resetarInterface("Erro ao validar QR Code.");
   }
 }
 
-function resetarInterface() {
+function resetarInterface(msg) {
+  scannerAtivo = false;
   loader.style.display = "none";
   qrReader.style.display = "none";
   cameraBtn.style.display = "flex";
   retryBtn.style.display = "block";
-  statusText.innerText = "Erro ao carregar câmera.";
+  statusText.innerText = msg;
 }
 
-cameraBtn.addEventListener("click", iniciarScanner);
-retryBtn.addEventListener("click", iniciarScanner);
+cameraBtn.onclick = iniciarScanner;
+retryBtn.onclick = iniciarScanner;
 </script>
 
 </body>
