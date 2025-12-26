@@ -20,14 +20,14 @@ body {
   background: linear-gradient(160deg,#998675 0%,#b2a18f 45%,#e8e2dc 100%);
   display: flex;
   justify-content: center;
-  align-items: center; /* Centraliza o painel verticalmente no desktop */
-  padding: 20px; /* Espaço para não encostar nas bordas do navegador */
+  align-items: center; /* Centraliza verticalmente no desktop */
+  padding: 20px;
 }
 
-/* CONTAINER PRINCIPAL (ELÁSTICO) */
+/* CONTAINER PRINCIPAL (Responsivo) */
 .screen {
   width: 100%;
-  max-width: 1100px; /* Aumentado para o desktop mostrar a tabela */
+  max-width: 1100px; /* Amplo para desktop */
   background: rgba(255,255,255,0.95);
   display: flex;
   flex-direction: column;
@@ -35,7 +35,7 @@ body {
   border-radius: 16px;
   border: 3px solid #998675;
   box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-  max-height: 90vh; /* Não deixa o painel ser maior que a altura da tela */
+  max-height: 90vh;
 }
 
 /* HEADER */
@@ -73,7 +73,7 @@ body {
 /* CONTEÚDO */
 .content {
   flex: 1;
-  overflow: auto; /* Scroll interno se houver muitas provas */
+  overflow: auto;
   padding: 16px;
 }
 
@@ -93,8 +93,9 @@ th, td {
 th {
   background: #f3f0ed;
   color: #3f362d;
-  position: sticky; /* Mantém o cabeçalho no topo ao rolar */
+  position: sticky;
   top: 0;
+  z-index: 10;
 }
 
 td {
@@ -109,10 +110,6 @@ button {
   font-weight: 600;
   cursor: pointer;
   transition: opacity 0.2s;
-}
-
-button:hover {
-  opacity: 0.8;
 }
 
 .ver {
@@ -131,13 +128,12 @@ button:hover {
 .footer {
   padding: 12px 16px 20px;
   flex-shrink: 0;
+  text-align: center;
 }
 
 .footer button {
   width: 100%;
-  max-width: 300px; /* No desktop o botão não fica gigante */
-  margin: 0 auto;
-  display: block;
+  max-width: 300px;
   height: 50px;
   border-radius: 14px;
   font-size: 16px;
@@ -165,25 +161,16 @@ button:hover {
 
 /* RESPONSIVO MOBILE */
 @media (max-width: 768px) {
-  body {
-    padding: 0;
-  }
+  body { padding: 0; }
   .screen {
-    max-width: 380px; /* No celular volta a ser estilo app */
+    max-width: 380px; /* Estilo app no celular */
     height: 100vh;
     border-radius: 0;
     max-height: 100vh;
   }
-  table {
-    display: none;
-  }
-  .cards {
-    display: flex;
-    flex-direction: column;
-  }
-  .footer button {
-    max-width: 100%;
-  }
+  table { display: none; }
+  .cards { display: flex; flex-direction: column; }
+  .footer button { max-width: 100%; }
 }
 </style>
 </head>
@@ -210,6 +197,7 @@ button:hover {
       <thead>
         <tr>
           <th>Nome</th>
+          <th>Etapa</th>
           <th>Curso</th>
           <th>Semestre</th>
           <th>Tipo</th>
@@ -226,7 +214,7 @@ button:hover {
   </main>
 
   <footer class="footer">
-    <button id="btnNovaProva">Voltar para Página Inicial</button>
+    <button id="btnVoltar">Voltar para Página Inicial</button>
   </footer>
 
 </div>
@@ -263,7 +251,7 @@ async function carregarProvas() {
 
   const snap = await get(ref(db, "provas"));
   if (!snap.exists()) {
-    lista.innerHTML = `<tr><td colspan="8" style="text-align:center">Nenhuma prova encontrada.</td></tr>`;
+    lista.innerHTML = `<tr><td colspan="9" style="text-align:center">Nenhuma prova encontrada.</td></tr>`;
     cards.innerHTML = `<p style="text-align:center;color:#666;">Nenhuma prova encontrada.</p>`;
     return;
   }
@@ -278,11 +266,13 @@ async function carregarProvas() {
     const data = prova.criadoEm ? new Date(prova.criadoEm).toLocaleString("pt-BR") : "-";
     const semestreExibido = semestreMap[prova.semestre] || prova.semestre || "-";
     const tipoExibido = tipoMap[prova.tipo] || prova.tipo || "-";
+    const etapaExibida = prova.etapa || "-";
 
-    // Inserir na Tabela (Desktop)
+    // TABELA (Desktop) - Ordem: Nome, Etapa, Curso...
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td>${prova.nome || "-"}</td>
+      <td>${etapaExibida}</td>
       <td>${curso}</td>
       <td>${semestreExibido}</td>
       <td>${tipoExibido}</td>
@@ -296,11 +286,12 @@ async function carregarProvas() {
     `;
     lista.appendChild(tr);
 
-    // Inserir no Card (Mobile)
+    // CARD (Mobile)
     const card = document.createElement("div");
     card.className = "card";
     card.innerHTML = `
       <h3>${prova.nome || "-"}</h3>
+      <p><strong>Etapa:</strong> ${etapaExibida}</p>
       <p><strong>Curso:</strong> ${curso}</p>
       <p><strong>Semestre:</strong> ${semestreExibido} | <strong>Tipo:</strong> ${tipoExibido}</p>
       <p><strong>Questões:</strong> ${questoes}</p>
@@ -313,7 +304,7 @@ async function carregarProvas() {
     cards.appendChild(card);
   });
 
-  // Delegar eventos para os botões (funciona em tabela e cards)
+  // Eventos de clique
   document.querySelectorAll(".ver").forEach(btn => {
     btn.onclick = () => location.href = `qr.html?provaId=${btn.dataset.id}`;
   });
@@ -331,7 +322,7 @@ async function carregarProvas() {
 }
 
 filtro.addEventListener("change", carregarProvas);
-document.getElementById("btnNovaProva").onclick = () => location.href = "dashboard.html";
+document.getElementById("btnVoltar").onclick = () => location.href = "dashboard.html";
 
 carregarProvas();
 </script>
