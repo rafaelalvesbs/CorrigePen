@@ -67,6 +67,7 @@
     
     let provaId = new URLSearchParams(window.location.search).get("provaId");
 
+    // Monitor do OpenCV
     function checkOpenCV() {
         if (typeof cv !== 'undefined' && cv.Mat) {
             document.getElementById('loading-cv').style.display = 'none';
@@ -78,17 +79,30 @@
     checkOpenCV();
 
     async function startCamera() {
-        const constraints = {
-            video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } }
-        };
-        const stream = await navigator.mediaDevices.getUserMedia(constraints);
-        video.srcObject = stream;
-        video.onloadedmetadata = () => processFrame();
+        try {
+            const constraints = {
+                video: { 
+                    facingMode: "environment", 
+                    width: { ideal: 640 }, // Reduzir a resolução melhora o processamento em tempo real
+                    height: { ideal: 480 } 
+                }
+            };
+            const stream = await navigator.mediaDevices.getUserMedia(constraints);
+            video.srcObject = stream;
+            video.play();
+            video.onloadedmetadata = () => processFrame();
+        } catch (err) {
+            alert("Erro na câmera: " + err);
+        }
     }
 
     function processFrame() {
+        // Inicialização de matrizes de memória
         let src = new cv.Mat(video.videoHeight, video.videoWidth, cv.CV_8UC4);
         let gray = new cv.Mat();
+        let thresh = new cv.Mat();
+        let contours = new cv.MatVector();
+        let hierarchy = new cv.Mat();
         let cap = new cv.VideoCapture(video);
 
         function loop() {
@@ -96,52 +110,68 @@
                 cap.read(src);
                 cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
                 
-                // --- MELHORIA DE CONTRASTE ---
-                // Aplica um Threshold adaptativo para destacar as bolinhas pretas no papel branco
-                cv.adaptiveThreshold(gray, gray, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY_INV, 11, 2);
+                // Filtro de pré-processamento para remover ruído
+                cv.GaussianBlur(gray, gray, new cv.Size(5, 5), 0);
                 
-                let circles = new cv.Mat();
-                // Parâmetros ajustados para maior sensibilidade
-                cv.HoughCircles(gray, circles, cv.HOUGH_GRADIENT, 1, 40, 50, 20, 15, 40);
+                // Limiarização Binária (Transforma tudo em Preto e Branco puro)
+                // O valor 100 pode ser ajustado: menor fica mais sensível ao escuro
+                cv.threshold(gray, thresh, 100, 255, cv.THRESH_BINARY_INV);
+                
+                // Encontrar contornos das manchas pretas
+                cv.findContours(thresh, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
 
                 const ctx = canvas.getContext('2d');
                 canvas.width = video.clientWidth;
                 canvas.height = video.clientHeight;
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-                if (circles.cols > 0) {
-                    if (btn.style.display !== 'block') {
-                        beep.play(); // Som positivo ao encontrar
-                        btn.style.display = 'block';
-                    }
-                    info.innerText = "BOLINHAS IDENTIFICADAS";
-                    info.style.color = "#00ff00";
+                let bolinhasEncontradas = 0;
 
-                    for (let i = 0; i < Math.min(circles.cols, 25); ++i) {
-                        let x = circles.data32F[i * 3];
-                        let y = circles.data32F[i * 3 + 1];
-                        let r = circles.data32F[i * 3 + 2];
+                for (let i = 0; i < contours.size(); ++i) {
+                    let cnt = contours.get(i);
+                    let rect = cv.boundingRect(cnt);
+                    let aspectRatio = rect.width / rect.height;
 
+                    // FILTRO DE BOLINHA:
+                    // 1. A largura deve estar entre 15 e 60 pixels
+                    // 2. Deve ser aproximadamente um quadrado (aspectRatio entre 0.7 e 1.3)
+                    if (rect.width >= 15 && rect.width <= 60 && aspectRatio >= 0.7 && aspectRatio <= 1.3) {
+                        bolinhasEncontradas++;
+
+                        // Coordenadas para o desenho
                         let scaleX = canvas.width / video.videoWidth;
                         let scaleY = canvas.height / video.videoHeight;
 
                         ctx.beginPath();
-                        ctx.arc(x * scaleX, y * scaleY, r * scaleX, 0, 2 * Math.PI);
-                        ctx.fillStyle = "rgba(0, 255, 0, 0.7)";
+                        ctx.arc(
+                            (rect.x + rect.width/2) * scaleX, 
+                            (rect.y + rect.height/2) * scaleY, 
+                            (rect.width/2) * scaleX, 
+                            0, 2 * Math.PI
+                        );
+                        ctx.fillStyle = "rgba(0, 255, 0, 0.6)";
                         ctx.fill();
-                        ctx.strokeStyle = "#fff";
-                        ctx.lineWidth = 3;
+                        ctx.strokeStyle = "white";
                         ctx.stroke();
                     }
+                }
+
+                if (bolinhasEncontradas >= 3) { // Se achar pelo menos 3 bolinhas
+                    if (btn.style.display !== 'block') {
+                        beep.play();
+                        btn.style.display = 'block';
+                    }
+                    info.innerText = bolinhasEncontradas + " MARCAÇÕES LIDAS";
+                    info.style.color = "#00ff00";
                 } else {
                     btn.style.display = 'none';
                     info.innerText = "BUSCANDO MARCAÇÕES...";
                     info.style.color = "#fff";
                 }
-                
-                circles.delete();
+
                 requestAnimationFrame(loop);
             } catch (e) {
+                console.error(e);
                 requestAnimationFrame(loop);
             }
         }
