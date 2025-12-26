@@ -26,7 +26,6 @@ body {
 .screen {
   width: 100%;
   max-width: 380px;
-  height: 100dvh;
   background: rgba(255,255,255,0.95);
   display: flex;
   flex-direction: column;
@@ -34,8 +33,15 @@ body {
   border-radius: 16px;
   border: 3px solid #998675;
   box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  height: 100vh; /* Desktop: ocupa a tela inteira */
 }
 
+/* Mobile: mantém altura limitada e scroll interno */
+@media (max-width: 768px) {
+  .screen {
+    height: 100dvh; /* altura do mobile com scroll interno */
+  }
+}
 
 /* HEADER */
 .header {
