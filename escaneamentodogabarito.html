@@ -2,46 +2,41 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<title>Leitor de Gabarito Simples</title>
+<title>Leitor de Gabarito - Funcional</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 <style>
-    body {
-        margin: 0;
-        background: #000;
-        color: #fff;
-        font-family: Arial, sans-serif;
-        text-align: center;
-    }
+body {
+    margin: 0;
+    background: #000;
+    color: white;
+    font-family: Arial, sans-serif;
+    text-align: center;
+}
 
-    video, canvas {
-        width: 100vw;
-        height: 100vh;
-        object-fit: cover;
-        position: absolute;
-        top: 0;
-        left: 0;
-    }
+video, canvas {
+    width: 100vw;
+    height: auto;
+}
 
-    #info {
-        position: fixed;
-        top: 10px;
-        left: 50%;
-        transform: translateX(-50%);
-        background: rgba(0,0,0,0.7);
-        padding: 10px 20px;
-        border-radius: 20px;
-        z-index: 10;
-        font-weight: bold;
-    }
+button {
+    padding: 15px 30px;
+    font-size: 18px;
+    margin: 15px;
+    border-radius: 10px;
+    border: none;
+    background: #00ff00;
+    font-weight: bold;
+}
 </style>
 </head>
 
 <body>
 
-<div id="info">Aponte a câmera para o gabarito</div>
+<h2>Leitor de Gabarito (Teste Real)</h2>
 
-<video id="video" autoplay playsinline></video>
+<video id="video" autoplay playsinline></video><br>
+<button onclick="capturar()">CAPTURAR</button><br>
 <canvas id="canvas"></canvas>
 
 <script>
@@ -49,58 +44,40 @@ const video = document.getElementById("video");
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
 
-// 1️⃣ Abrir câmera
+// Abrir câmera
 navigator.mediaDevices.getUserMedia({
     video: { facingMode: "environment" }
 }).then(stream => {
     video.srcObject = stream;
 });
 
-// 2️⃣ Processar imagem em loop
-function processar() {
-    if (video.videoWidth === 0) {
-        requestAnimationFrame(processar);
-        return;
-    }
-
+// Captura imagem
+function capturar() {
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
-
     ctx.drawImage(video, 0, 0);
 
-    let imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    let data = imageData.data;
+    let img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    analisar(img);
+}
 
-    // 3️⃣ Converter para preto e branco
+// Analisar imagem parada
+function analisar(imageData) {
+    const data = imageData.data;
+    const step = 25;
+
+    // Preto e branco
     for (let i = 0; i < data.length; i += 4) {
-        let r = data[i];
-        let g = data[i + 1];
-        let b = data[i + 2];
-
-        let gray = (r + g + b) / 3;
-
-        let threshold = 120;
-        let value = gray < threshold ? 0 : 255;
-
-        data[i] = value;
-        data[i + 1] = value;
-        data[i + 2] = value;
+        let gray = (data[i] + data[i+1] + data[i+2]) / 3;
+        let v = gray < 130 ? 0 : 255;
+        data[i] = data[i+1] = data[i+2] = v;
     }
 
     ctx.putImageData(imageData, 0, 0);
 
-    detectarBolinhas(imageData);
-
-    requestAnimationFrame(processar);
-}
-
-// 4️⃣ Detectar regiões escuras
-function detectarBolinhas(imageData) {
-    const step = 20; // tamanho do bloco
-    const minPixelsPretos = 50;
-
+    // Detectar áreas escuras
     ctx.strokeStyle = "lime";
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 4;
 
     for (let y = 0; y < canvas.height; y += step) {
         for (let x = 0; x < canvas.width; x += step) {
@@ -109,21 +86,17 @@ function detectarBolinhas(imageData) {
 
             for (let dy = 0; dy < step; dy++) {
                 for (let dx = 0; dx < step; dx++) {
-                    let px = ((y + dy) * canvas.width + (x + dx)) * 4;
-                    if (imageData.data[px] === 0) {
-                        pretos++;
-                    }
+                    let p = ((y + dy) * canvas.width + (x + dx)) * 4;
+                    if (data[p] === 0) pretos++;
                 }
             }
 
-            if (pretos > minPixelsPretos) {
+            if (pretos > 80) {
                 ctx.strokeRect(x, y, step, step);
             }
         }
     }
 }
-
-processar();
 </script>
 
 </body>
