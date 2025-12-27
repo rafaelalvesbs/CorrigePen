@@ -1,174 +1,112 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>GradePen Clone - OMR</title>
-    <script src="https://docs.opencv.org/4.5.4/opencv.js"></script>
-    <style>
-        body { margin: 0; background: #000; font-family: 'Segoe UI', sans-serif; overflow: hidden; color: white; }
-        #loading { position: fixed; inset: 0; background: #1a1a1a; display: flex; justify-content: center; align-items: center; z-index: 1000; }
-        .container { position: relative; width: 100vw; height: 100vh; }
-        video, #canvas-draw { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-        
-        .status-ui { position: absolute; top: 30px; width: 100%; text-align: center; z-index: 10; text-shadow: 2px 2px 4px #000; }
-        .viewport { 
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            width: 70%; height: 80%; border: 2px dashed rgba(0, 255, 0, 0.5); border-radius: 15px; pointer-events: none;
-        }
+<meta charset="UTF-8">
+<title>Leitor OMR – 10 Questões</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-        #btn-scan {
-            position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%);
-            padding: 18px 40px; background: #28a745; color: white; border: none;
-            border-radius: 50px; font-weight: bold; font-size: 1.1rem; display: none; z-index: 100; cursor: pointer;
-        }
-
-        #popup {
-            position: fixed; inset: 0; background: #000; display: none;
-            flex-direction: column; align-items: center; padding: 20px; z-index: 2000; overflow-y: auto;
-        }
-        .result-table { width: 100%; max-width: 400px; border-collapse: collapse; margin-top: 20px; }
-        .result-table td { padding: 10px; border-bottom: 1px solid #333; text-align: center; }
-        .btn-close { margin-top: 20px; padding: 15px 30px; background: #dc3545; color: white; border: none; border-radius: 8px; font-weight: bold; }
-    </style>
+<style>
+body {
+  margin: 0;
+  background: #111;
+  color: white;
+  font-family: Arial;
+  text-align: center;
+}
+video, canvas {
+  width: 100%;
+  max-width: 420px;
+}
+button {
+  margin: 10px;
+  padding: 15px 30px;
+  font-size: 18px;
+  border-radius: 10px;
+  background: #00ff00;
+  border: none;
+  font-weight: bold;
+}
+</style>
 </head>
+
 <body>
 
-<div id="loading">Iniciando Visão Computacional...</div>
+<h2>Leitor de Gabarito (OMR)</h2>
 
-<div class="container">
-    <div class="status-ui">
-        <h2 id="msg">APONTE PARA O GABARITO</h2>
-        <p>10 Questões (A, B, C)</p>
-    </div>
-    <video id="video" playsinline muted></video>
-    <canvas id="canvas-draw"></canvas>
-    <div class="viewport"></div>
-    <button id="btn-scan">CALCULAR NOTA</button>
-</div>
-
-<div id="popup">
-    <h1>Resultados</h1>
-    <table class="result-table" id="res-content"></table>
-    <button class="btn-close" onclick="location.reload()">NOVA LEITURA</button>
-</div>
+<video id="video" autoplay playsinline></video>
+<button onclick="capturar()">CAPTURAR</button>
+<canvas id="canvas"></canvas>
 
 <audio id="beep" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3"></audio>
 
 <script>
-    const video = document.getElementById('video');
-    const canvas = document.getElementById('canvas-draw');
-    const msg = document.getElementById('msg');
-    const btn = document.getElementById('btn-scan');
-    const beep = document.getElementById('beep');
-    let markers = [];
+const video = document.getElementById("video");
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+const beep = document.getElementById("beep");
 
-    async function start() {
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ 
-                video: { facingMode: "environment", width: 640, height: 480 } 
-            });
-            video.srcObject = stream;
-            video.play();
-            document.getElementById('loading').style.display = 'none';
-            setTimeout(process, 1000);
-        } catch (e) { alert("HTTPS necessário para câmera."); }
+// Abrir câmera
+navigator.mediaDevices.getUserMedia({
+  video: { facingMode: "environment" }
+}).then(stream => video.srcObject = stream);
+
+// CONFIGURAÇÃO DO GABARITO
+const QUESTOES = 10;
+const ALTERNATIVAS = ["A", "B", "C"];
+
+// posições RELATIVAS (percentual da imagem)
+const baseX = [0.30, 0.50, 0.70]; // A B C
+const baseY = 0.20;
+const gapY = 0.06;
+const box = 22;
+
+function capturar() {
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  ctx.drawImage(video, 0, 0);
+  analisar();
+}
+
+function analisar() {
+  const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const data = img.data;
+  let respostas = [];
+
+  ctx.strokeStyle = "lime";
+  ctx.lineWidth = 3;
+
+  for (let q = 0; q < QUESTOES; q++) {
+    let marcadas = [];
+
+    for (let a = 0; a < 3; a++) {
+      const x = Math.floor(canvas.width * baseX[a]);
+      const y = Math.floor(canvas.height * (baseY + q * gapY));
+
+      let pretos = 0;
+
+      for (let dy = 0; dy < box; dy++) {
+        for (let dx = 0; dx < box; dx++) {
+          const px = ((y + dy) * canvas.width + (x + dx)) * 4;
+          const gray = (data[px] + data[px+1] + data[px+2]) / 3;
+          if (gray < 120) pretos++;
+        }
+      }
+
+      if (pretos > 120) {
+        marcadas.push(ALTERNATIVAS[a]);
+        ctx.strokeRect(x, y, box, box);
+      }
     }
 
-    function process() {
-        let src = new cv.Mat(video.videoHeight, video.videoWidth, cv.CV_8UC4);
-        let gray = new cv.Mat();
-        let thresh = new cv.Mat();
-        let contours = new cv.MatVector();
-        let hierarchy = new cv.Mat();
-        let cap = new cv.VideoCapture(video);
+    if (marcadas.length === 1) respostas.push(marcadas[0]);
+    else if (marcadas.length > 1) respostas.push("ANULADA");
+    else respostas.push("BRANCO");
+  }
 
-        function loop() {
-            try {
-                cap.read(src);
-                cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-                cv.GaussianBlur(gray, gray, new cv.Size(5, 5), 0);
-                cv.adaptiveThreshold(gray, thresh, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY_INV, 11, 4);
-                cv.findContours(thresh, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-
-                const ctx = canvas.getContext('2d');
-                canvas.width = video.clientWidth;
-                canvas.height = video.clientHeight;
-                ctx.clearRect(0,0, canvas.width, canvas.height);
-
-                markers = [];
-                const sx = canvas.width / src.cols;
-                const sy = canvas.height / src.rows;
-
-                for (let i = 0; i < contours.size(); i++) {
-                    let cnt = contours.get(i);
-                    let rect = cv.boundingRect(cnt);
-                    let area = cv.contourArea(cnt);
-                    let ratio = rect.width / rect.height;
-
-                    if (area > 250 && area < 3000 && ratio > 0.7 && ratio < 1.3) {
-                        markers.push(rect);
-                        ctx.beginPath();
-                        ctx.arc((rect.x + rect.width/2)*sx, (rect.y + rect.height/2)*sy, (rect.width/2)*sx, 0, 2*Math.PI);
-                        ctx.fillStyle = "rgba(0, 255, 0, 0.6)";
-                        ctx.fill();
-                        ctx.strokeStyle = "white";
-                        ctx.stroke();
-                    }
-                }
-
-                if (markers.length >= 10) {
-                    msg.innerText = markers.length + " MARCAS ENCONTRADAS";
-                    btn.style.display = "block";
-                } else {
-                    msg.innerText = "ALINHE AS 10 QUESTÕES";
-                    btn.style.display = "none";
-                }
-                requestAnimationFrame(loop);
-            } catch (e) { requestAnimationFrame(loop); }
-        }
-        loop();
-    }
-
-    btn.onclick = () => {
-        beep.play();
-        
-        // Lógica Estilo GradePen: Ordenar por Y (Questões) e X (Alternativas)
-        // Agrupar bolinhas que estão na mesma linha (tolerância de 20px)
-        markers.sort((a, b) => a.y - b.y);
-        
-        let questoesEncontradas = [];
-        let tempRow = [markers[0]];
-
-        for (let i = 1; i < markers.length; i++) {
-            if (Math.abs(markers[i].y - tempRow[0].y) < 25) {
-                tempRow.push(markers[i]);
-            } else {
-                tempRow.sort((a, b) => a.x - b.x);
-                questoesEncontradas.push(tempRow);
-                tempRow = [markers[i]];
-            }
-        }
-        questoesEncontradas.push(tempRow);
-
-        // Exibir no Popup
-        const resTable = document.getElementById('res-content');
-        resTable.innerHTML = "<tr><th>Questão</th><th>Resposta</th></tr>";
-        
-        questoesEncontradas.slice(0, 10).forEach((row, index) => {
-            let rowText = row.map(r => {
-                // Mapeia X para A, B ou C (simplificado)
-                if (row.length === 1) return "Única Marcada";
-                return "Múltiplas";
-            });
-            
-            resTable.innerHTML += `<tr><td>Q${index + 1}</td><td>Marcada ✓</td></tr>`;
-        });
-
-        document.getElementById('popup').style.display = "flex";
-    };
-
-    if (cv.Mat) start(); else cv.onRuntimeInitialized = start;
+  beep.play();
+  alert("Respostas detectadas:\n\n" + respostas.map((r,i)=>`${i+1}: ${r}`).join("\n"));
+}
 </script>
+
 </body>
 </html>
