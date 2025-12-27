@@ -1,222 +1,107 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Scanner OMR Pro</title>
-    <script src="https://docs.opencv.org/4.5.4/opencv.js" type="text/javascript"></script>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { background: #000; font-family: sans-serif; overflow: hidden; color: white; }
-        
-        #loading-screen {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: #1a1a1a; display: flex; flex-direction: column;
-            justify-content: center; align-items: center; z-index: 1000;
-        }
+<meta charset="UTF-8">
+<title>OMR Funcional</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-        .loader {
-            border: 4px solid #333; border-top: 4px solid #00ff00;
-            border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite;
-        }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-
-        .container { position: relative; width: 100vw; height: 100vh; }
-        video, canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; }
-        
-        .overlay-guide {
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            width: 80%; height: 60%; border: 3px solid rgba(0, 255, 0, 0.4);
-            border-radius: 20px; pointer-events: none; z-index: 5;
-            box-shadow: 0 0 0 1000px rgba(0,0,0,0.6);
-        }
-
-        .status-bar {
-            position: absolute; top: 20px; left: 0; width: 100%; text-align: center;
-            z-index: 10; padding: 15px; background: rgba(0,0,0,0.8);
-        }
-
-        #btn-capture {
-            position: absolute; bottom: 50px; left: 50%; transform: translateX(-50%);
-            padding: 20px 50px; background: #00ff00; color: #000; border: none;
-            border-radius: 50px; font-weight: 900; font-size: 20px; 
-            display: none; z-index: 20; cursor: pointer; box-shadow: 0 0 20px rgba(0,255,0,0.5);
-        }
-    </style>
+<style>
+body {
+    margin: 0;
+    background: black;
+    color: white;
+    font-family: Arial;
+    text-align: center;
+}
+video, canvas {
+    width: 100%;
+    max-height: 80vh;
+}
+button {
+    padding: 15px 30px;
+    font-size: 18px;
+    margin: 10px;
+    border-radius: 10px;
+    background: #00ff00;
+    border: none;
+    font-weight: bold;
+}
+</style>
 </head>
+
 <body>
 
-<div id="loading-screen">
-    <div class="loader"></div>
-    <p style="margin-top: 15px;">Carregando Inteligência OMR...</p>
-</div>
+<h2>Leitor de Gabarito</h2>
 
-<div class="container">
-    <div class="status-bar">
-        <h3 id="info-text">Iniciando...</h3>
-        <p id="sub-info">Enquadre as bolinhas no retângulo</p>
-    </div>
-
-    <video id="video-feed" autoplay playsinline muted></video>
-    <canvas id="canvas-draw"></canvas>
-    <div class="overlay-guide"></div>
-
-    <button id="btn-capture">CAPTURAR AGORA</button>
-</div>
+<video id="video" autoplay playsinline></video>
+<button onclick="capturar()">CAPTURAR</button>
+<canvas id="canvas"></canvas>
 
 <audio id="beep" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3"></audio>
 
 <script>
-    const video = document.getElementById('video-feed');
-    const canvas = document.getElementById('canvas-draw');
-    const ctx = canvas.getContext('2d');
-    const infoText = document.getElementById('info-text');
-    const btnCapture = document.getElementById('btn-capture');
-    const loadingScreen = document.getElementById('loading-screen');
-    const beep = document.getElementById('beep');
+const video = document.getElementById("video");
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+const beep = document.getElementById("beep");
 
-    let isProcessing = false;
+// Abrir câmera
+navigator.mediaDevices.getUserMedia({
+    video: { facingMode: "environment" }
+}).then(stream => {
+    video.srcObject = stream;
+});
 
-    // 1. Iniciar quando o OpenCV carregar
-    window.onload = () => {
-        if (typeof cv !== 'undefined') {
-            onOpenCvReady();
-        } else {
-            document.addEventListener('opencv-ready', onOpenCvReady);
-        }
-    };
+// Captura imagem
+function capturar() {
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    ctx.drawImage(video, 0, 0);
 
-    function onOpenCvReady() {
-        loadingScreen.style.display = 'none';
-        infoText.innerText = "Câmera Pronta";
-        startCamera();
+    let img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    detectar(img);
+}
+
+// Detecta bolinhas pretas
+function detectar(imageData) {
+    const data = imageData.data;
+    const size = 20;
+
+    let detectou = false;
+
+    // Preto e branco
+    for (let i = 0; i < data.length; i += 4) {
+        let gray = (data[i] + data[i+1] + data[i+2]) / 3;
+        let v = gray < 120 ? 0 : 255;
+        data[i] = data[i+1] = data[i+2] = v;
     }
 
-    async function startCamera() {
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: "environment", width: 640, height: 480 }
-            });
-            video.srcObject = stream;
-            video.onloadedmetadata = () => {
-                video.play();
-                // Pequeno delay para a câmera ajustar brilho antes de processar
-                setTimeout(() => {
-                    isProcessing = true;
-                    processFrame();
-                }, 1000);
-            };
-        } catch (err) {
-            infoText.innerText = "Erro ao acessar câmera";
-            alert("Para funcionar, você precisa usar HTTPS ou Localhost.");
-        }
-    }
+    ctx.putImageData(imageData, 0, 0);
+    ctx.strokeStyle = "lime";
+    ctx.lineWidth = 3;
 
-    function processFrame() {
-        if (!isProcessing) return;
+    for (let y = 0; y < canvas.height; y += size) {
+        for (let x = 0; x < canvas.width; x += size) {
 
-        // Dimensões do vídeo
-        const width = video.videoWidth;
-        const height = video.videoHeight;
-        
-        if (width === 0) {
-            requestAnimationFrame(processFrame);
-            return;
-        }
+            let pretos = 0;
 
-        // Alocação de memória (Matrizes OpenCV)
-        let src = new cv.Mat(height, width, cv.CV_8UC4);
-        let gray = new cv.Mat();
-        let thresh = new cv.Mat();
-        let contours = new cv.MatVector();
-        let hierarchy = new cv.Mat();
-        
-        const cap = new cv.VideoCapture(video);
-
-        function loop() {
-            if (!isProcessing) return;
-
-            try {
-                cap.read(src);
-                cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-                
-                // Redução de ruído
-                cv.GaussianBlur(gray, gray, new cv.Size(5, 5), 0);
-                
-                // Threshold Adaptativo: Crucial para detectar bolinhas pretas em papel branco
-                // O parâmetro 11 e 4 ajuda a isolar círculos pretos
-                cv.adaptiveThreshold(gray, thresh, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY_INV, 11, 4);
-
-                cv.findContours(thresh, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-
-                // Ajustar canvas para o tamanho da tela do dispositivo
-                canvas.width = video.clientWidth;
-                canvas.height = video.clientHeight;
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-                let detectedCircles = 0;
-                const scaleX = canvas.width / width;
-                const scaleY = canvas.height / height;
-
-                for (let i = 0; i < contours.size(); i++) {
-                    let cnt = contours.get(i);
-                    let area = cv.contourArea(cnt);
-                    let rect = cv.boundingRect(cnt);
-                    let ratio = rect.width / rect.height;
-
-                    // Filtro de bolinha: Tamanho ideal e formato circular (proporção ~1.0)
-                    if (area > 300 && area < 5000 && ratio > 0.7 && ratio < 1.3) {
-                        detectedCircles++;
-                        
-                        // Desenhar feedback VERDE na tela
-                        ctx.beginPath();
-                        ctx.arc(
-                            (rect.x + rect.width / 2) * scaleX, 
-                            (rect.y + rect.height / 2) * scaleY, 
-                            (rect.width / 2) * scaleX, 0, 2 * Math.PI
-                        );
-                        ctx.fillStyle = "rgba(0, 255, 0, 0.6)"; // Verde semi-transparente
-                        ctx.fill();
-                        ctx.strokeStyle = "white";
-                        ctx.lineWidth = 3;
-                        ctx.stroke();
-                    }
+            for (let dy = 0; dy < size; dy++) {
+                for (let dx = 0; dx < size; dx++) {
+                    let p = ((y + dy) * canvas.width + (x + dx)) * 4;
+                    if (data[p] === 0) pretos++;
                 }
+            }
 
-                // Lógica de Sucesso: se achar pelo menos 3 bolinhas
-                if (detectedCircles >= 3) {
-                    infoText.innerText = detectedCircles + " BOLINHAS IDENTIFICADAS";
-                    infoText.style.color = "#00ff00";
-                    
-                    if (btnCapture.style.display !== 'block') {
-                        btnCapture.style.display = 'block';
-                        beep.play().catch(e => console.log("Erro áudio:", e));
-                    }
-                } else {
-                    infoText.innerText = "BUSCANDO GABARITO...";
-                    infoText.style.color = "white";
-                    btnCapture.style.display = 'none';
-                }
-
-                // Liberar memória dos contornos deste frame
-                contours.delete();
-                hierarchy.delete();
-                // Criar novos para o próximo frame
-                contours = new cv.MatVector();
-                hierarchy = new cv.Mat();
-
-                requestAnimationFrame(loop);
-            } catch (err) {
-                console.error("Erro no processamento:", err);
-                requestAnimationFrame(loop);
+            if (pretos > 100) {
+                ctx.strokeRect(x, y, size, size);
+                detectou = true;
             }
         }
-        loop();
     }
 
-    btnCapture.onclick = () => {
-        alert("Gabarito capturado com sucesso!");
-    };
+    if (detectou) beep.play();
+}
 </script>
+
 </body>
 </html>
