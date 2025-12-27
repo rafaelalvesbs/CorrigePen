@@ -2,8 +2,10 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<title>OMR Funcional</title>
+<title>Leitor de Gabarito OMR</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<script async src="https://docs.opencv.org/4.8.0/opencv.js"></script>
 
 <style>
 body {
@@ -18,13 +20,12 @@ video, canvas {
     max-height: 80vh;
 }
 button {
-    padding: 15px 30px;
-    font-size: 18px;
+    padding: 12px 20px;
     margin: 10px;
-    border-radius: 10px;
-    background: #00ff00;
+    font-size: 16px;
+    border-radius: 6px;
     border: none;
-    font-weight: bold;
+    cursor: pointer;
 }
 </style>
 </head>
@@ -34,83 +35,110 @@ button {
 <h2>Leitor de Gabarito</h2>
 
 <video id="video" autoplay playsinline></video>
-<button onclick="capturar()">CAPTURAR</button>
 <canvas id="canvas"></canvas>
 
-<audio id="beep" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3"></audio>
+<button onclick="capturar()">📸 Capturar</button>
 
 <script>
-const video = document.getElementById("video");
-const canvas = document.getElementById("canvas");
-const ctx = canvas.getContext("2d");
-const beep = document.getElementById("beep");
+let video = document.getElementById("video");
+let canvas = document.getElementById("canvas");
+let ctx = canvas.getContext("2d");
 
-navigator.mediaDevices.getUserMedia({
-    video: { facingMode: "environment" }
-}).then(stream => {
-    video.srcObject = stream;
-});
+// Ativa câmera
+navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+.then(stream => video.srcObject = stream);
 
 // Captura imagem
 function capturar() {
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     ctx.drawImage(video, 0, 0);
-
-    const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    detectar(img);
+    processar();
 }
 
-function detectar(imageData) {
-    const data = imageData.data;
+function processar() {
+    let src = cv.imread(canvas);
+    let gray = new cv.Mat();
+    let blur = new cv.Mat();
+    let edges = new cv.Mat();
 
-    const bloco = 28;            // bloco maior
-    const limiteEscuro = 140;    // aceita cinza escuro
-    const densidadeMin = 0.35;   // % de pixels pretos no bloco
+    cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+    cv.GaussianBlur(gray, blur, new cv.Size(5,5), 0);
+    cv.Canny(blur, edges, 75, 200);
 
-    let detectou = false;
+    // Detecta contornos
+    let contours = new cv.MatVector();
+    let hierarchy = new cv.Mat();
+    cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
 
-    // Converte para tons de cinza
-    for (let i = 0; i < data.length; i += 4) {
-        const gray = (data[i] * 0.3 + data[i+1] * 0.59 + data[i+2] * 0.11);
-        const v = gray < limiteEscuro ? 0 : 255;
-        data[i] = data[i+1] = data[i+2] = v;
-    }
+    let biggest;
+    let maxArea = 0;
 
-    ctx.putImageData(imageData, 0, 0);
-    ctx.lineWidth = 3;
-
-    for (let y = 0; y < canvas.height - bloco; y += bloco) {
-        for (let x = 0; x < canvas.width - bloco; x += bloco) {
-
-            let pretos = 0;
-            let total = bloco * bloco;
-
-            for (let dy = 0; dy < bloco; dy++) {
-                for (let dx = 0; dx < bloco; dx++) {
-                    const p = ((y + dy) * canvas.width + (x + dx)) * 4;
-                    if (data[p] === 0) pretos++;
-                }
-            }
-
-            const densidade = pretos / total;
-
-            if (densidade > densidadeMin) {
-                ctx.strokeStyle = "lime";
-                ctx.strokeRect(x, y, bloco, bloco);
-
-                ctx.fillStyle = "rgba(0,255,0,0.25)";
-                ctx.fillRect(x, y, bloco, bloco);
-
-                detectou = true;
-            }
+    for (let i = 0; i < contours.size(); i++) {
+        let cnt = contours.get(i);
+        let area = cv.contourArea(cnt);
+        if (area > maxArea) {
+            biggest = cnt;
+            maxArea = area;
         }
     }
 
-    if (detectou) {
-        beep.currentTime = 0;
-        beep.play().catch(()=>{});
+    if (!biggest) {
+        alert("Papel não detectado");
+        return;
     }
+
+    // Aproxima para 4 pontos
+    let peri = cv.arcLength(biggest, true);
+    let approx = new cv.Mat();
+    cv.approxPolyDP(biggest, approx, 0.02 * peri, true);
+
+    if (approx.rows !== 4) {
+        alert("Não foi possível corrigir a inclinação");
+        return;
+    }
+
+    // Ordena pontos
+    let pts = [];
+    for (let i = 0; i < 4; i++) {
+        pts.push({
+            x: approx.intPtr(i,0)[0],
+            y: approx.intPtr(i,0)[1]
+        });
+    }
+
+    pts.sort((a,b) => a.y - b.y);
+    let top = pts.slice(0,2).sort((a,b)=>a.x-b.x);
+    let bottom = pts.slice(2,4).sort((a,b)=>a.x-b.x);
+
+    let srcPts = cv.matFromArray(4,1,cv.CV_32FC2,[
+        top[0].x, top[0].y,
+        top[1].x, top[1].y,
+        bottom[1].x, bottom[1].y,
+        bottom[0].x, bottom[0].y
+    ]);
+
+    let dstPts = cv.matFromArray(4,1,cv.CV_32FC2,[
+        0,0,
+        500,0,
+        500,700,
+        0,700
+    ]);
+
+    let M = cv.getPerspectiveTransform(srcPts, dstPts);
+    let warped = new cv.Mat();
+    cv.warpPerspective(src, warped, M, new cv.Size(500,700));
+
+    // Binarização
+    let finalGray = new cv.Mat();
+    cv.cvtColor(warped, finalGray, cv.COLOR_RGBA2GRAY);
+    cv.threshold(finalGray, finalGray, 0, 255, cv.THRESH_BINARY_INV + cv.THRESH_OTSU);
+
+    cv.imshow(canvas, finalGray);
+
+    src.delete(); gray.delete(); blur.delete(); edges.delete();
+    contours.delete(); hierarchy.delete(); approx.delete();
+    warped.delete(); finalGray.delete();
 }
 </script>
 
