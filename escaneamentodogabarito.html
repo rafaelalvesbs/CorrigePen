@@ -82,7 +82,8 @@ function App() {
       if (resp === gabarito[i]) acertos++;
     });
     
-    const calculo = (acertos / gabarito.length) * 10;
+    // MUDANÇA SOLICITADA: Cada acerto vale 2 pontos (10 acertos = 20 pontos)
+    const calculo = acertos * 2;
     setNotaFinal(calculo.toFixed(1));
     setScanAtual(leiturasFinais);
     setLocked(true); 
