@@ -2,107 +2,51 @@
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Scanner Integrado Firebase</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Leitor de Gabarito Final</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-slate-950 text-white overflow-hidden">
+<body class="bg-slate-900 text-white font-sans">
     <div id="root"></div>
 
-    <script type="module" type="text/babel">
-        // IMPORTAÇÕES DO FIREBASE (Igual ao seu arquivo de QR Code)
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js";
-        import { getDatabase, ref, get } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-database.js";
-
-        const firebaseConfig = {
-            apiKey: "AIzaSyCZ77ugK5a3pw-U0NH43F2x1bu09sS5pJg",
-            authDomain: "correcao-de-provas-f315d.firebaseapp.com",
-            projectId: "correcao-de-provas-f315d",
-            databaseURL: "https://correcao-de-provas-f315d-default-rtdb.firebaseio.com",
-        };
-
-        const app = initializeApp(firebaseConfig);
-        const db = getDatabase(app);
-
+    <script type="text/babel">
         const { useState, useRef, useEffect } = React;
 
-        // SUAS COORDENADAS CALIBRADAS
+        // SEUS DADOS CALIBRADOS
         const CONFIG = {
-            startX: 315, startY: 340, gapX: 84, gapY: 69,
-            size: 25, threshold: 40000
+            startX: 315,
+            startY: 340,
+            gapX: 84,
+            gapY: 69,
+            size: 25, // Tamanho da área de leitura
+            threshold: 40000 // Sensibilidade do preto (ajuste se necessário)
         };
 
-        function ScannerApp() {
+        // GABARITO PARA CORREÇÃO (Altere aqui as respostas certas)
+        const RESPOSTAS_CORRETAS = ['A', 'B', 'C', 'A', 'B', 'C', 'A', 'B', 'C', 'A'];
+
+        function App() {
             const videoRef = useRef(null);
             const canvasRef = useRef(null);
-            const [gabaritoOficial, setGabaritoOficial] = useState(null);
             const [alunoNotas, setAlunoNotas] = useState([]);
-            const [currentScan, setCurrentScan] = useState(null);
-            const [isLocked, setIsLocked] = useState(false);
-            const [loading, setLoading] = useState(true);
+            const [currentScan, setCurrentScan] = useState([]);
 
-            // 1. BUSCAR GABARITO NO FIREBASE AO INICIAR
             useEffect(() => {
-                const params = new URLSearchParams(window.location.search);
-                const provaId = params.get("provaId");
-
-                if (!provaId) {
-                    alert("Erro: ID da prova não encontrado na URL.");
-                    return;
-                }
-
-                async function buscarGabarito() {
-                    try {
-                        const snapshot = await get(ref(db, `provas/${provaId}`));
-                        if (snapshot.exists()) {
-                            const dados = snapshot.val();
-                            // SUPOSIÇÃO: O campo no Firebase se chama 'gabarito' e é um array ['A', 'B'...]
-                            // Se o nome for diferente no seu banco, ajuste a linha abaixo:
-                            setGabaritoOficial(dados.gabarito || dados.respostas);
-                        } else {
-                            alert("Prova não encontrada no banco de dados.");
-                        }
-                    } catch (e) {
-                        console.error(e);
-                    } finally {
-                        setLoading(false);
-                    }
-                }
-                buscarGabarito();
+                navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: "environment", width: 1280, height: 720 } 
+                }).then(stream => videoRef.current.srcObject = stream);
+                
+                const timer = setInterval(scannerLogic, 150);
+                return () => clearInterval(timer);
             }, []);
-
-            // 2. INICIAR CÂMERA
-            useEffect(() => {
-                if (!loading) {
-                    navigator.mediaDevices.getUserMedia({ 
-                        video: { facingMode: "environment", width: 1280, height: 720 } 
-                    }).then(stream => videoRef.current.srcObject = stream);
-                    
-                    const timer = setInterval(() => {
-                        if (!isLocked) scannerLogic();
-                    }, 100);
-                    return () => clearInterval(timer);
-                }
-            }, [isLocked, loading]);
-
-            const playBeep = (freq = 440, duration = 0.1) => {
-                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-                const oscillator = audioCtx.createOscillator();
-                const gainNode = audioCtx.createGain();
-                oscillator.connect(gainNode);
-                gainNode.connect(audioCtx.destination);
-                oscillator.frequency.value = freq;
-                gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
-                oscillator.start();
-                oscillator.stop(audioCtx.currentTime + duration);
-            };
 
             const scannerLogic = () => {
                 if (!videoRef.current || !canvasRef.current) return;
                 const ctx = canvasRef.current.getContext('2d', { willReadFrequently: true });
+                
                 canvasRef.current.width = videoRef.current.videoWidth;
                 canvasRef.current.height = videoRef.current.videoHeight;
                 ctx.drawImage(videoRef.current, 0, 0);
@@ -111,20 +55,24 @@
                 for (let q = 0; q < 10; q++) {
                     let marked = null;
                     let maxDark = 0;
+
                     ['A', 'B', 'C'].forEach((opt, i) => {
                         const x = CONFIG.startX + (i * CONFIG.gapX);
                         const y = CONFIG.startY + (q * CONFIG.gapY);
+                        
                         const data = ctx.getImageData(x, y, CONFIG.size, CONFIG.size).data;
                         let dark = 0;
                         for (let p = 0; p < data.length; p += 4) {
                             dark += (255 - (data[p] + data[p+1] + data[p+2]) / 3);
                         }
+
                         if (dark > CONFIG.threshold && dark > maxDark) {
                             maxDark = dark;
                             marked = opt;
                         }
-                        ctx.strokeStyle = dark > CONFIG.threshold ? "#00ff00" : "rgba(255,255,255,0.2)";
-                        ctx.lineWidth = 3;
+                        
+                        // Desenha feedback na tela
+                        ctx.strokeStyle = dark > CONFIG.threshold ? "#00ff00" : "#ff0000";
                         ctx.strokeRect(x, y, CONFIG.size, CONFIG.size);
                     });
                     detected.push(marked);
@@ -132,55 +80,57 @@
                 setCurrentScan(detected);
             };
 
-            const handleConfirm = () => {
-                if (!gabaritoOficial) return alert("Gabarito oficial não carregado!");
-
-                const acertos = currentScan.reduce((acc, res, i) => 
-                    res === gabaritoOficial[i] ? acc + 1 : acc, 0);
-                
+            const salvarNota = () => {
+                const acertos = currentScan.reduce((acc, res, i) => res === RESPOSTAS_CORRETAS[i] ? acc + 1 : acc, 0);
                 const novaNota = {
                     id: alunoNotas.length + 1,
                     acertos,
-                    nota: (acertos / gabaritoOficial.length * 10).toFixed(1),
-                    hora: new Date().toLocaleTimeString()
+                    nota: (acertos / 10 * 10).toFixed(1),
+                    data: new Date().toLocaleTimeString()
                 };
-
                 setAlunoNotas([novaNota, ...alunoNotas]);
-                setIsLocked(false);
-                playBeep(880, 0.1);
             };
 
-            if (loading) return <div class="h-screen flex items-center justify-center">Carregando Gabarito...</div>;
-
             return (
-                <div class="flex flex-col h-screen">
-                    <div class="relative flex-1 bg-black overflow-hidden">
-                        <video ref={videoRef} autoPlay playsInline class={`w-full h-full object-cover ${isLocked ? 'opacity-40' : ''}`} />
-                        <canvas ref={canvasRef} class="absolute top-0 left-0 w-full h-full object-cover" />
-                        <div class="absolute top-4 right-4 bg-blue-600 px-3 py-1 rounded text-xs font-bold">
-                            Gabarito Carregado ✓
+                <div class="flex flex-col lg:flex-row h-screen">
+                    {/* Lado Esquerdo: Câmera */}
+                    <div class="relative flex-[2] bg-black">
+                        <video ref={videoRef} autoPlay playsInline class="w-full h-full object-contain" />
+                        <canvas ref={canvasRef} class="absolute top-0 left-0 w-full h-full object-contain pointer-events-none opacity-60" />
+                        
+                        <div class="absolute top-4 left-4 bg-black/60 p-2 rounded text-xs font-mono">
+                            Status: Scanner Ativo (ABC - 10 Questões)
                         </div>
                     </div>
 
-                    <div class="h-24 bg-slate-900 flex items-center px-4 gap-4 overflow-x-auto border-t border-slate-800">
-                        {alunoNotas.map(n => (
-                            <div key={n.id} class="bg-slate-800 border-b-2 border-green-500 p-2 min-w-[80px] text-center">
-                                <p class="text-[9px] text-gray-400">ALUNO {n.id}</p>
-                                <p class="text-lg font-black text-green-400">{n.nota}</p>
-                            </div>
-                        ))}
-                    </div>
+                    {/* Lado Direito: Resultados */}
+                    <div class="flex-1 bg-slate-800 p-6 overflow-y-auto border-l border-slate-700">
+                        <h2 class="text-xl font-bold mb-4 border-b border-slate-600 pb-2">Resultados</h2>
+                        
+                        <button 
+                            onClick={salvarNota}
+                            class="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-4 rounded-xl mb-6 shadow-lg transition-all active:scale-95"
+                        >
+                            CONFIRMAR E SALVAR NOTA
+                        </button>
 
-                    <div class="bg-slate-900 p-4 pb-8 flex gap-4 shadow-2xl">
-                        {!isLocked ? (
-                            <button onClick={() => { setIsLocked(true); playBeep(600, 0.05); }} class="flex-1 bg-blue-600 py-5 rounded-2xl font-black text-xl uppercase tracking-tighter">
-                                Capturar Respostas
-                            </button>
-                        ) : (
-                            <>
-                                <button onClick={() => setIsLocked(false)} class="flex-1 bg-slate-700 py-5 rounded-2xl font-bold uppercase">Voltar</button>
-                                <button onClick={handleConfirm} class="flex-[2] bg-green-600 py-5 rounded-2xl font-black text-xl uppercase">Confirmar Nota</button>
-                            </>
+                        <div class="space-y-3">
+                            {alunoNotas.map(item => (
+                                <div key={item.id} class="bg-slate-700 p-3 rounded-lg flex justify-between items-center border-l-4 border-green-500">
+                                    <div>
+                                        <p class="text-[10px] text-slate-400">Aluno #{item.id} - {item.data}</p>
+                                        <p class="font-bold uppercase text-sm">{item.acertos} Acertos</p>
+                                    </div>
+                                    <div class="text-2xl font-black text-green-400">{item.nota}</div>
+                                </div>
+                            ))}
+                        </div>
+
+                        {alunoNotas.length === 0 && (
+                            <div class="text-center text-slate-500 mt-10">
+                                <p>Nenhum aluno escaneado ainda.</p>
+                                <p class="text-xs">Aponte a câmera e clique no botão verde.</p>
+                            </div>
                         )}
                     </div>
                 </div>
@@ -188,7 +138,7 @@
         }
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<ScannerApp />);
+        root.render(<App />);
     </script>
 </body>
 </html>
