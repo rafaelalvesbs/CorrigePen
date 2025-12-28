@@ -3,128 +3,135 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Calibrador de Coordenadas OMR</title>
+    <title>Leitor de Gabarito Final</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-gray-900 text-white">
+<body class="bg-slate-900 text-white font-sans">
     <div id="root"></div>
 
     <script type="text/babel">
         const { useState, useRef, useEffect } = React;
 
+        // SEUS DADOS CALIBRADOS
+        const CONFIG = {
+            startX: 315,
+            startY: 340,
+            gapX: 84,
+            gapY: 69,
+            size: 25, // Tamanho da área de leitura
+            threshold: 40000 // Sensibilidade do preto (ajuste se necessário)
+        };
+
+        // GABARITO PARA CORREÇÃO (Altere aqui as respostas certas)
+        const RESPOSTAS_CORRETAS = ['A', 'B', 'C', 'A', 'B', 'C', 'A', 'B', 'C', 'A'];
+
         function App() {
             const videoRef = useRef(null);
             const canvasRef = useRef(null);
-            
-            // Estado das coordenadas que você vai copiar
-            const [coords, setCoords] = useState({
-                startX: 100,
-                startY: 150,
-                gapX: 60,
-                gapY: 45,
-                size: 20
-            });
+            const [alunoNotas, setAlunoNotas] = useState([]);
+            const [currentScan, setCurrentScan] = useState([]);
 
             useEffect(() => {
                 navigator.mediaDevices.getUserMedia({ 
-                    video: { facingMode: "environment", width: { ideal: 1280 } } 
+                    video: { facingMode: "environment", width: 1280, height: 720 } 
                 }).then(stream => videoRef.current.srcObject = stream);
                 
-                const render = () => {
-                    drawGrid();
-                    requestAnimationFrame(render);
-                };
-                render();
-            }, [coords]);
+                const timer = setInterval(scannerLogic, 150);
+                return () => clearInterval(timer);
+            }, []);
 
-            const drawGrid = () => {
+            const scannerLogic = () => {
                 if (!videoRef.current || !canvasRef.current) return;
-                const ctx = canvasRef.current.getContext('2d');
+                const ctx = canvasRef.current.getContext('2d', { willReadFrequently: true });
+                
                 canvasRef.current.width = videoRef.current.videoWidth;
                 canvasRef.current.height = videoRef.current.videoHeight;
-                
                 ctx.drawImage(videoRef.current, 0, 0);
 
-                // Desenha a grade de 10x3 (A, B, C)
-                ctx.lineWidth = 2;
+                const detected = [];
                 for (let q = 0; q < 10; q++) {
+                    let marked = null;
+                    let maxDark = 0;
+
                     ['A', 'B', 'C'].forEach((opt, i) => {
-                        const x = coords.startX + (i * coords.gapX);
-                        const y = coords.startY + (q * coords.gapY);
+                        const x = CONFIG.startX + (i * CONFIG.gapX);
+                        const y = CONFIG.startY + (q * CONFIG.gapY);
                         
-                        // Desenha o quadrado de detecção
-                        ctx.strokeStyle = "#00FF00";
-                        ctx.strokeRect(x, y, coords.size, coords.size);
-                        
-                        // Desenha a legenda da coordenada apenas no primeiro e último
-                        if(q === 0 || q === 9) {
-                            ctx.fillStyle = "#00FF00";
-                            ctx.font = "10px Monospace";
-                            ctx.fillText(`${opt}${q+1}`, x, y - 5);
+                        const data = ctx.getImageData(x, y, CONFIG.size, CONFIG.size).data;
+                        let dark = 0;
+                        for (let p = 0; p < data.length; p += 4) {
+                            dark += (255 - (data[p] + data[p+1] + data[p+2]) / 3);
                         }
+
+                        if (dark > CONFIG.threshold && dark > maxDark) {
+                            maxDark = dark;
+                            marked = opt;
+                        }
+                        
+                        // Desenha feedback na tela
+                        ctx.strokeStyle = dark > CONFIG.threshold ? "#00ff00" : "#ff0000";
+                        ctx.strokeRect(x, y, CONFIG.size, CONFIG.size);
                     });
+                    detected.push(marked);
                 }
+                setCurrentScan(detected);
+            };
+
+            const salvarNota = () => {
+                const acertos = currentScan.reduce((acc, res, i) => res === RESPOSTAS_CORRETAS[i] ? acc + 1 : acc, 0);
+                const novaNota = {
+                    id: alunoNotas.length + 1,
+                    acertos,
+                    nota: (acertos / 10 * 10).toFixed(1),
+                    data: new Date().toLocaleTimeString()
+                };
+                setAlunoNotas([novaNota, ...alunoNotas]);
             };
 
             return (
-                <div class="flex flex-col h-screen">
-                    {/* Área da Câmera */}
-                    <div class="relative flex-1 bg-black overflow-hidden">
-                        <video ref={videoRef} autoPlay playsInline class="absolute w-full h-full object-contain" />
-                        <canvas ref={canvasRef} class="absolute w-full h-full object-contain" />
+                <div class="flex flex-col lg:flex-row h-screen">
+                    {/* Lado Esquerdo: Câmera */}
+                    <div class="relative flex-[2] bg-black">
+                        <video ref={videoRef} autoPlay playsInline class="w-full h-full object-contain" />
+                        <canvas ref={canvasRef} class="absolute top-0 left-0 w-full h-full object-contain pointer-events-none opacity-60" />
+                        
+                        <div class="absolute top-4 left-4 bg-black/60 p-2 rounded text-xs font-mono">
+                            Status: Scanner Ativo (ABC - 10 Questões)
+                        </div>
                     </div>
 
-                    {/* Painel de Calibração */}
-                    <div class="bg-gray-800 p-6 border-t border-gray-700 shadow-2xl">
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                            <div class="space-y-4">
-                                <div>
-                                    <label class="flex justify-between text-xs font-bold text-blue-400 mb-1">
-                                        EIXO X INICIAL (startX): <span>{coords.startX}px</span>
-                                    </label>
-                                    <input type="range" min="0" max="1000" value={coords.startX} 
-                                        onChange={e => setCoords({...coords, startX: parseInt(e.target.value)})} class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer" />
-                                </div>
-                                <div>
-                                    <label class="flex justify-between text-xs font-bold text-blue-400 mb-1">
-                                        EIXO Y INICIAL (startY): <span>{coords.startY}px</span>
-                                    </label>
-                                    <input type="range" min="0" max="1000" value={coords.startY} 
-                                        onChange={e => setCoords({...coords, startY: parseInt(e.target.value)})} class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer" />
-                                </div>
-                            </div>
+                    {/* Lado Direito: Resultados */}
+                    <div class="flex-1 bg-slate-800 p-6 overflow-y-auto border-l border-slate-700">
+                        <h2 class="text-xl font-bold mb-4 border-b border-slate-600 pb-2">Resultados</h2>
+                        
+                        <button 
+                            onClick={salvarNota}
+                            class="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-4 rounded-xl mb-6 shadow-lg transition-all active:scale-95"
+                        >
+                            CONFIRMAR E SALVAR NOTA
+                        </button>
 
-                            <div class="space-y-4">
-                                <div>
-                                    <label class="flex justify-between text-xs font-bold text-green-400 mb-1">
-                                        DISTÂNCIA ENTRE A-B-C (gapX): <span>{coords.gapX}px</span>
-                                    </label>
-                                    <input type="range" min="10" max="200" value={coords.gapX} 
-                                        onChange={e => setCoords({...coords, gapX: parseInt(e.target.value)})} class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer" />
+                        <div class="space-y-3">
+                            {alunoNotas.map(item => (
+                                <div key={item.id} class="bg-slate-700 p-3 rounded-lg flex justify-between items-center border-l-4 border-green-500">
+                                    <div>
+                                        <p class="text-[10px] text-slate-400">Aluno #{item.id} - {item.data}</p>
+                                        <p class="font-bold uppercase text-sm">{item.acertos} Acertos</p>
+                                    </div>
+                                    <div class="text-2xl font-black text-green-400">{item.nota}</div>
                                 </div>
-                                <div>
-                                    <label class="flex justify-between text-xs font-bold text-green-400 mb-1">
-                                        DISTÂNCIA ENTRE QUESTÕES (gapY): <span>{coords.gapY}px</span>
-                                    </label>
-                                    <input type="range" min="10" max="200" value={coords.gapY} 
-                                        onChange={e => setCoords({...coords, gapY: parseInt(e.target.value)})} class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer" />
-                                </div>
-                            </div>
+                            ))}
                         </div>
 
-                        {/* Bloco de Código para Copiar */}
-                        <div class="bg-black p-4 rounded-lg border border-gray-600 font-mono text-sm">
-                            <p class="text-gray-500 mb-2">// Copie estes valores para o seu código principal:</p>
-                            <p class="text-yellow-400 italic">
-                                const startX = {coords.startX};<br/>
-                                const startY = {coords.startY};<br/>
-                                const gapX = {coords.gapX};<br/>
-                                const gapY = {coords.gapY};
-                            </p>
-                        </div>
+                        {alunoNotas.length === 0 && (
+                            <div class="text-center text-slate-500 mt-10">
+                                <p>Nenhum aluno escaneado ainda.</p>
+                                <p class="text-xs">Aponte a câmera e clique no botão verde.</p>
+                            </div>
+                        )}
                     </div>
                 </div>
             );
