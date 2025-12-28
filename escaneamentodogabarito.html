@@ -8,6 +8,8 @@
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
 </head>
 <body class="bg-black text-white overflow-hidden">
 <div id="root"></div>
@@ -32,23 +34,53 @@ function App() {
   const [locked, setLocked] = useState(false);
   const [error, setError] = useState(null);
   
-  // Estado para armazenar o gabarito vindo do Firebase
-  const [gabarito, setGabarito] = useState(['A','B','C','A','B','C','A','B','C','A']); // Exemplo padrão
+  // Estados para dados dinâmicos
+  const [gabarito, setGabarito] = useState([]); 
   const [notaFinal, setNotaFinal] = useState(0);
+  const [carregando, setCarregando] = useState(true);
 
   useEffect(() => {
+    // 1. Captura o ID da prova pela URL
+    const params = new URLSearchParams(window.location.search);
+    const provaId = params.get('id');
+
+    if (!provaId) {
+      alert("ID da prova não encontrado. Escaneie o QR Code novamente.");
+      window.location.href = 'escaneamentodoqrcode.html';
+      return;
+    }
+
+    // 2. Busca o gabarito no Firebase (Caminho: provas/ID_DA_PROVA)
+    // Nota: O objeto 'db' deve estar inicializado globalmente no seu projeto
+    if (typeof db !== 'undefined') {
+      db.ref('provas/' + provaId).once('value').then(snapshot => {
+        const data = snapshot.val();
+        if (data && data.gabarito) {
+          setGabarito(data.gabarito);
+          setCarregando(false);
+        } else {
+          alert("Gabarito não encontrado no banco de dados.");
+        }
+      }).catch(err => alert("Erro ao conectar ao Firebase"));
+    } else {
+      // Caso o Firebase não esteja pronto, usa o padrão para teste
+      console.warn("Firebase não detectado. Usando gabarito padrão.");
+      setGabarito(['A','B','C','A','B','C','A','B','C','A']);
+      setCarregando(false);
+    }
+
+    // 3. Inicia Câmera
     navigator.mediaDevices.getUserMedia({
       video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } }
     }).then(stream => {
       videoRef.current.srcObject = stream;
     }).catch(() => setError("Erro ao acessar a câmera"));
-
-    // AQUI VOCÊ PODE BUSCAR O GABARITO DO FIREBASE SE DESEJAR
-    // db.ref('gabarito').once('value').then(snapshot => setGabarito(snapshot.val()));
   }, []);
 
   const salvarNotaAutomatica = (leiturasFinais) => {
-    // Cálculo da nota comparando com o gabarito
+    if (gabarito.length === 0) return;
+
+    // Cálculo da nota comparando com o gabarito do Firebase
     let acertos = 0;
     leiturasFinais.forEach((resp, i) => {
       if (resp === gabarito[i]) acertos++;
@@ -59,13 +91,14 @@ function App() {
     setScanAtual(leiturasFinais);
     setLocked(true); 
 
-    // Opcional: Salvar nota no Firebase aqui
+    // Opcional: Salvar nota do aluno no Firebase
+    // db.ref('resultados').push({ nota: calculo.toFixed(1), data: new Date().toISOString() });
   };
 
   const processarFrame = () => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
-    if (!video || !canvas || video.readyState < 2) return;
+    if (!video || !canvas || video.readyState < 2 || carregando) return;
 
     const ctx = canvas.getContext("2d", { willReadFrequently: true });
     if (canvas.width !== video.videoWidth) {
@@ -83,16 +116,13 @@ function App() {
       ['A','B','C'].forEach((opt, i) => {
         const x = CONFIG.startX + i * CONFIG.gapX;
         const y = CONFIG.startY + q * CONFIG.gapY;
-
         const pixels = ctx.getImageData(x, y, CONFIG.size, CONFIG.size).data;
         let escuro = 0;
         for (let p = 0; p < pixels.length; p += 4) {
           escuro += 255 - (pixels[p] + pixels[p+1] + pixels[p+2]) / 3;
         }
-
         ctx.strokeStyle = "rgba(255,255,255,0.15)";
         ctx.strokeRect(x, y, CONFIG.size, CONFIG.size);
-
         dadosOpcoes.push({ opt, escuro, x, y });
       });
 
@@ -127,7 +157,9 @@ function App() {
       if (!locked) processarFrame();
     }, 150);
     return () => clearInterval(timer);
-  }, [locked]);
+  }, [locked, carregando]);
+
+  if (carregando) return <div className="h-screen flex items-center justify-center bg-black text-blue-500 font-bold">CARREGANDO GABARITO...</div>;
 
   return (
     <div className="flex flex-col h-screen">
@@ -179,4 +211,3 @@ root.render(<App />);
 </style>
 </body>
 </html>
-
