@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gerenciar Usuários e Correções</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; font-family:system-ui,-apple-system,BlinkMacSystemFont,sans-serif; }
+body {
+  min-height: 100vh;
+  background: linear-gradient(160deg, #998675 0%, #b2a18f 45%, #e8e2dc 100%);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+.screen{ width:100%; max-width:420px; min-height: 100dvh; background:rgba(255,255,255,0.95); display:flex; flex-direction:column; overflow:hidden; border:3px solid #998675; border-radius:16px; box-shadow:0 4px 12px rgba(0,0,0,0.1); position:relative; }
+.header{padding:24px; text-align:center;}
+.header h1{ font-size:22px; color:#3f362d;}
+.subtitle{ font-size:14px; color:#6b5f55; margin-top:4px; }
+.content{flex:1; padding:24px; padding-bottom:110px; overflow-y:auto;}
+.user-card { border:1px solid #d6cfc8; border-radius:12px; padding:12px 16px; margin-bottom:12px; background:#fdfaf6; display:flex; flex-direction:column; gap:6px; }
+.user-card span { font-size:14px; color:#4b423a; }
+.user-actions { display:flex; gap:8px; margin-top:8px; }
+button { border:none; border-radius:14px; font-size:14px; font-weight:600; cursor:pointer; }
+.accept { flex:1; background:linear-gradient(135deg,#998675,#7f6d5c); color:#fff; }
+.delete { flex:1; background:#c94c4c; color:#fff; }
+.footer{ padding:20px 24px; position:absolute; bottom:0; left:0; width:100%; background:rgba(255,255,255,0.95);}
+.provas-list { margin-top:6px; padding-left:12px; }
+.provas-list li { font-size:13px; color:#4b423a; margin-bottom:4px; }
+
+/* RESPONSIVO */
+    @media (max-width: 480px) {
+      .screen {
+        margin: 16px;
+      }
+    }
+    
+</style>
+</head>
+<body>
+<div class="screen">
+  <header class="header">
+    <h1>Gerenciar Usuários</h1>
+    <p class="subtitle">Veja usuários, aprovações e provas corrigidas</p>
+  </header>
+  <main class="content" id="userList">
+    <!-- Usuários serão inseridos aqui -->
+  </main>
+  <footer class="footer">
+    <button onclick="window.location.reload()">Atualizar</button>
+  </footer>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js";
+import { getDatabase, ref, onValue, remove, update } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-database.js";
+import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-auth.js";
+
+// Config Firebase
+const firebaseConfig = {
+  apiKey: "AIzaSyCZ77ugK5a3pw-U0NH43F2x1bu09sS5pJg",
+  authDomain: "correcao-de-provas-f315d.firebaseapp.com",
+  projectId: "correcao-de-provas-f315d",
+  databaseURL: "https://correcao-de-provas-f315d-default-rtdb.firebaseio.com",
+};
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+const auth = getAuth(app);
+
+let usuarioLogado = null;
+
+// 🔒 Verifica se o usuário está logado e se é admin
+onAuthStateChanged(auth, (user) => {
+  if (!user) {
+    alert("Você precisa estar logado para gerenciar usuários.");
+    window.location.href = "login.html";
+  } else {
+    usuarioLogado = user;
+    loadUsers();
+  }
+});
+
+// Função para carregar usuários e suas provas corrigidas
+function loadUsers() {
+  const userList = document.getElementById("userList");
+  const usersRef = ref(db, "usuarios");
+  const provasRef = ref(db, "correcoes"); // registros de correções
+
+  onValue(usersRef, (snapshot) => {
+    userList.innerHTML = ""; // limpa lista
+    const users = snapshot.val();
+    if (!users) return;
+
+    Object.keys(users).forEach(uid => {
+      const user = users[uid];
+
+      const card = document.createElement("div");
+      card.className = "user-card";
+
+      card.innerHTML = `
+        <span><strong>Nome:</strong> ${user.nome}</span>
+        <span><strong>Email:</strong> ${user.email}</span>
+        <span><strong>Curso:</strong> ${user.curso || 'Não definido'}</span>
+        <span><strong>Status:</strong> ${user.ativo ? 'Ativo' : 'Pendente'}</span>
+      `;
+
+      // Botões para usuários pendentes
+      if (!user.ativo) {
+        const actions = document.createElement("div");
+        actions.className = "user-actions";
+
+        const acceptBtn = document.createElement("button");
+        acceptBtn.className = "accept";
+        acceptBtn.textContent = "Aceitar";
+        acceptBtn.onclick = () => acceptUser(uid);
+
+        const deleteBtn = document.createElement("button");
+        deleteBtn.className = "delete";
+        deleteBtn.textContent = "Excluir";
+        deleteBtn.onclick = () => deleteUser(uid);
+
+        actions.appendChild(acceptBtn);
+        actions.appendChild(deleteBtn);
+        card.appendChild(actions);
+      }
+
+      // Lista de provas corrigidas pelo usuário
+      const provasList = document.createElement("ul");
+      provasList.className = "provas-list";
+      onValue(provasRef, (snap) => {
+        provasList.innerHTML = "";
+        const correcoes = snap.val();
+        if (correcoes) {
+          Object.keys(correcoes).forEach(pid => {
+            const c = correcoes[pid];
+            if (c.professorId === uid) {
+              const li = document.createElement("li");
+              const dataHora = new Date(c.dataHora).toLocaleString("pt-BR");
+              li.textContent = `Prova: ${c.provaNome} - Corrigida em: ${dataHora}`;
+              provasList.appendChild(li);
+            }
+          });
+        }
+      });
+
+      if (user.ativo) {
+        const title = document.createElement("span");
+        title.textContent = "Provas corrigidas:";
+        card.appendChild(title);
+        card.appendChild(provasList);
+      }
+
+      userList.appendChild(card);
+    });
+  });
+}
+
+// Aceitar usuário
+function acceptUser(uid) {
+  update(ref(db, `usuarios/${uid}`), { ativo: true })
+    .then(() => alert("Usuário aceito com sucesso!"))
+    .catch(err => alert("Erro: " + err));
+}
+
+// Excluir usuário
+function deleteUser(uid) {
+  if (!confirm("Tem certeza que deseja excluir este usuário?")) return;
+  remove(ref(db, `usuarios/${uid}`))
+    .then(() => alert("Usuário excluído!"))
+    .catch(err => alert("Erro: " + err));
+}
+</script>
+</body>
+</html>
