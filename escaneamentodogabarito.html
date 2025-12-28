@@ -1,137 +1,160 @@
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Calibrador de Coordenadas OMR</title>
-    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
+  <meta charset="UTF-8" />
+  <title>CorrigePen PRO - Automático</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-gray-900 text-white">
-    <div id="root"></div>
+<body class="bg-black text-white overflow-hidden">
+<div id="root"></div>
 
-    <script type="text/babel">
-        const { useState, useRef, useEffect } = React;
+<script type="text/babel">
+const { useEffect, useRef, useState } = React;
 
-        function App() {
-            const videoRef = useRef(null);
-            const canvasRef = useRef(null);
-            
-            // Estado das coordenadas que você vai copiar
-            const [coords, setCoords] = useState({
-                startX: 100,
-                startY: 150,
-                gapX: 60,
-                gapY: 45,
-                size: 20
-            });
+/* ================= CONFIG ATUALIZADA ================= */
+const CONFIG = {
+  startX: 377, // Atualizado
+  startY: 351, // Atualizado
+  gapX: 93,    // Atualizado
+  gapY: 76,    // Atualizado
+  size: 30,    
+  threshold: 35000 
+};
 
-            useEffect(() => {
-                navigator.mediaDevices.getUserMedia({ 
-                    video: { facingMode: "environment", width: { ideal: 1280 } } 
-                }).then(stream => videoRef.current.srcObject = stream);
-                
-                const render = () => {
-                    drawGrid();
-                    requestAnimationFrame(render);
-                };
-                render();
-            }, [coords]);
+function App() {
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const [scanAtual, setScanAtual] = useState([]);
+  const [locked, setLocked] = useState(false);
+  const [error, setError] = useState(null);
 
-            const drawGrid = () => {
-                if (!videoRef.current || !canvasRef.current) return;
-                const ctx = canvasRef.current.getContext('2d');
-                canvasRef.current.width = videoRef.current.videoWidth;
-                canvasRef.current.height = videoRef.current.videoHeight;
-                
-                ctx.drawImage(videoRef.current, 0, 0);
+  useEffect(() => {
+    navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } }
+    }).then(stream => {
+      videoRef.current.srcObject = stream;
+    }).catch(() => setError("Erro ao acessar a câmera"));
+  }, []);
 
-                // Desenha a grade de 10x3 (A, B, C)
-                ctx.lineWidth = 2;
-                for (let q = 0; q < 10; q++) {
-                    ['A', 'B', 'C'].forEach((opt, i) => {
-                        const x = coords.startX + (i * coords.gapX);
-                        const y = coords.startY + (q * coords.gapY);
-                        
-                        // Desenha o quadrado de detecção
-                        ctx.strokeStyle = "#00FF00";
-                        ctx.strokeRect(x, y, coords.size, coords.size);
-                        
-                        // Desenha a legenda da coordenada apenas no primeiro e último
-                        if(q === 0 || q === 9) {
-                            ctx.fillStyle = "#00FF00";
-                            ctx.font = "10px Monospace";
-                            ctx.fillText(`${opt}${q+1}`, x, y - 5);
-                        }
-                    });
-                }
-            };
+  const salvarNotaAutomatica = (leiturasFinais) => {
+    setLocked(true); 
+    setScanAtual(leiturasFinais);
+    
+    setTimeout(() => {
+        alert("Nota Salva Automaticamente!");
+        setLocked(false);
+    }, 500);
+  };
 
-            return (
-                <div class="flex flex-col h-screen">
-                    {/* Área da Câmera */}
-                    <div class="relative flex-1 bg-black overflow-hidden">
-                        <video ref={videoRef} autoPlay playsInline class="absolute w-full h-full object-contain" />
-                        <canvas ref={canvasRef} class="absolute w-full h-full object-contain" />
-                    </div>
+  const processarFrame = () => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas || video.readyState < 2) return;
 
-                    {/* Painel de Calibração */}
-                    <div class="bg-gray-800 p-6 border-t border-gray-700 shadow-2xl">
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                            <div class="space-y-4">
-                                <div>
-                                    <label class="flex justify-between text-xs font-bold text-blue-400 mb-1">
-                                        EIXO X INICIAL (startX): <span>{coords.startX}px</span>
-                                    </label>
-                                    <input type="range" min="0" max="1000" value={coords.startX} 
-                                        onChange={e => setCoords({...coords, startX: parseInt(e.target.value)})} class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer" />
-                                </div>
-                                <div>
-                                    <label class="flex justify-between text-xs font-bold text-blue-400 mb-1">
-                                        EIXO Y INICIAL (startY): <span>{coords.startY}px</span>
-                                    </label>
-                                    <input type="range" min="0" max="1000" value={coords.startY} 
-                                        onChange={e => setCoords({...coords, startY: parseInt(e.target.value)})} class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer" />
-                                </div>
-                            </div>
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    if (canvas.width !== video.videoWidth) {
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+    }
 
-                            <div class="space-y-4">
-                                <div>
-                                    <label class="flex justify-between text-xs font-bold text-green-400 mb-1">
-                                        DISTÂNCIA ENTRE A-B-C (gapX): <span>{coords.gapX}px</span>
-                                    </label>
-                                    <input type="range" min="10" max="200" value={coords.gapX} 
-                                        onChange={e => setCoords({...coords, gapX: parseInt(e.target.value)})} class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer" />
-                                </div>
-                                <div>
-                                    <label class="flex justify-between text-xs font-bold text-green-400 mb-1">
-                                        DISTÂNCIA ENTRE QUESTÕES (gapY): <span>{coords.gapY}px</span>
-                                    </label>
-                                    <input type="range" min="10" max="200" value={coords.gapY} 
-                                        onChange={e => setCoords({...coords, gapY: parseInt(e.target.value)})} class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer" />
-                                </div>
-                            </div>
-                        </div>
+    ctx.drawImage(video, 0, 0);
+    const leitura = [];
+    let contagemDetectadas = 0;
 
-                        {/* Bloco de Código para Copiar */}
-                        <div class="bg-black p-4 rounded-lg border border-gray-600 font-mono text-sm">
-                            <p class="text-gray-500 mb-2">// Copie estes valores para o seu código principal:</p>
-                            <p class="text-yellow-400 italic">
-                                const startX = {coords.startX};<br/>
-                                const startY = {coords.startY};<br/>
-                                const gapX = {coords.gapX};<br/>
-                                const gapY = {coords.gapY};
-                            </p>
-                        </div>
-                    </div>
-                </div>
-            );
+    for (let q = 0; q < 10; q++) {
+      let dadosOpcoes = [];
+
+      ['A','B','C'].forEach((opt, i) => {
+        const x = CONFIG.startX + i * CONFIG.gapX;
+        const y = CONFIG.startY + q * CONFIG.gapY;
+
+        const pixels = ctx.getImageData(x, y, CONFIG.size, CONFIG.size).data;
+        let escuro = 0;
+        for (let p = 0; p < pixels.length; p += 4) {
+          escuro += 255 - (pixels[p] + pixels[p+1] + pixels[p+2]) / 3;
         }
 
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
-    </script>
+        ctx.strokeStyle = "rgba(255,255,255,0.15)";
+        ctx.strokeRect(x, y, CONFIG.size, CONFIG.size);
+
+        dadosOpcoes.push({ opt, escuro, x, y });
+      });
+
+      dadosOpcoes.sort((a, b) => b.escuro - a.escuro);
+      const maisEscura = dadosOpcoes[0];
+      const segundaMaisEscura = dadosOpcoes[1];
+
+      if (maisEscura.escuro > CONFIG.threshold && maisEscura.escuro > segundaMaisEscura.escuro * 1.5) {
+        ctx.fillStyle = "rgba(0,255,0,0.5)";
+        ctx.beginPath();
+        ctx.arc(maisEscura.x + CONFIG.size/2, maisEscura.y + CONFIG.size/2, CONFIG.size * 0.8, 0, Math.PI*2);
+        ctx.fill();
+        leitura.push(maisEscura.opt);
+        contagemDetectadas++;
+      } else {
+        ctx.strokeStyle = "rgba(255,0,0,0.5)";
+        ctx.lineWidth = 3;
+        ctx.strokeRect(CONFIG.startX - 5, (CONFIG.startY + q * CONFIG.gapY) - 5, (CONFIG.gapX * 2) + CONFIG.size + 10, CONFIG.size + 10);
+        leitura.push(null);
+      }
+    }
+    
+    setScanAtual(leitura);
+
+    if (contagemDetectadas === 10 && !locked) {
+        salvarNotaAutomatica(leitura);
+    }
+  };
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (!locked) processarFrame();
+    }, 150);
+    return () => clearInterval(timer);
+  }, [locked]);
+
+  return (
+    <div className="flex flex-col h-screen">
+      <div className="relative flex-1">
+        <video ref={videoRef} autoPlay playsInline className={`absolute w-full h-full object-cover ${locked ? 'opacity-40' : ''}`}/>
+        <canvas ref={canvasRef} className="absolute w-full h-full object-cover"/>
+
+        {!locked && (
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-blue-600/80 px-4 py-2 rounded-full text-xs font-bold uppercase tracking-widest border border-white/20">
+                Aguardando 10 questões: {scanAtual.filter(r => r !== null).length}/10
+            </div>
+        )}
+
+        {locked && (
+          <div className="absolute left-4 top-4 bg-black/90 border border-green-500 p-4 rounded-xl shadow-2xl">
+            <p className="text-green-400 font-bold mb-2 text-sm uppercase tracking-widest">Leitura Concluída!</p>
+            <div className="grid grid-cols-2 gap-x-6 gap-y-1 font-mono text-sm">
+              {scanAtual.map((r,i)=>(
+                <div key={i} className="flex justify-between border-b border-white/10 w-24">
+                  <span className="text-gray-500">{i+1}:</span>
+                  <span className="text-white font-bold">{r}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="p-6 bg-slate-900 flex gap-4 pb-10">
+        <div className="w-full text-center py-4 text-slate-400 text-sm font-medium animate-pulse">
+            {locked ? "Processando..." : "Alinhe a câmera para capturar automaticamente"}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(<App />);
+</script>
 </body>
 </html>
