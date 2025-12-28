@@ -39,7 +39,7 @@ function App() {
   const [notaFinal, setNotaFinal] = useState(0);
 
   useEffect(() => {
-    // 1. Configuração do Firebase dentro do efeito
+    // Inicialização do Firebase
     const firebaseConfig = {
       apiKey: "AIzaSyCZ77ugK5a3pw-U0NH43F2x1bu09sS5pJg",
       authDomain: "correcao-de-provas-f315d.firebaseapp.com",
@@ -50,43 +50,33 @@ function App() {
     if (!firebase.apps.length) {
       firebase.initializeApp(firebaseConfig);
     }
-    const db = firebase.database();
 
-    // 2. Pegar provaId da URL
+    // Pega o provaId da URL (enviado pelo leitor de QR Code)
     const params = new URLSearchParams(window.location.search);
     const provaId = params.get("provaId");
 
     if (provaId) {
-      // Busca o gabarito da prova específica
-      db.ref(`provas/${provaId}`).once('value').then(snapshot => {
+      // BUSCA NO CAMINHO CORRETO: gabaritos/ID
+      firebase.database().ref(`gabaritos/${provaId}`).once('value').then(snapshot => {
         if (snapshot.exists()) {
-          const dadosProva = snapshot.val();
-          // Aqui pegamos o campo 'gabarito' que deve ser um array ['A', 'B', ...]
-          if (dadosProva.gabarito) {
-            setGabarito(dadosProva.gabarito);
-          }
+          setGabarito(snapshot.val()); // Define o array ['A', 'B', 'C'...]
         } else {
-          alert("Gabarito não encontrado para esta prova.");
+          console.error("Gabarito não encontrado no Firebase.");
         }
       });
     }
 
-    // Acesso à câmera
     navigator.mediaDevices.getUserMedia({
       video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } }
     }).then(stream => {
       videoRef.current.srcObject = stream;
     }).catch(() => setError("Erro ao acessar a câmera"));
-
   }, []);
 
   const salvarNotaAutomatica = (leiturasFinais) => {
-    if (gabarito.length === 0) {
-      alert("Aguardando carregamento do gabarito...");
-      return;
-    }
+    if (gabarito.length === 0) return;
 
-    // Cálculo da nota comparando com o gabarito oficial
+    // Cálculo da nota comparando com o gabarito do Firebase
     let acertos = 0;
     leiturasFinais.forEach((resp, i) => {
       if (resp === gabarito[i]) acertos++;
@@ -115,20 +105,16 @@ function App() {
 
     for (let q = 0; q < 10; q++) {
       let dadosOpcoes = [];
-
       ['A','B','C'].forEach((opt, i) => {
         const x = CONFIG.startX + i * CONFIG.gapX;
         const y = CONFIG.startY + q * CONFIG.gapY;
-
         const pixels = ctx.getImageData(x, y, CONFIG.size, CONFIG.size).data;
         let escuro = 0;
         for (let p = 0; p < pixels.length; p += 4) {
           escuro += 255 - (pixels[p] + pixels[p+1] + pixels[p+2]) / 3;
         }
-
         ctx.strokeStyle = "rgba(255,255,255,0.15)";
         ctx.strokeRect(x, y, CONFIG.size, CONFIG.size);
-
         dadosOpcoes.push({ opt, escuro, x, y });
       });
 
@@ -152,7 +138,6 @@ function App() {
     }
     
     setScanAtual(leitura);
-
     if (contagemDetectadas === 10 && !locked) {
         salvarNotaAutomatica(leitura);
     }
@@ -163,7 +148,7 @@ function App() {
       if (!locked) processarFrame();
     }, 150);
     return () => clearInterval(timer);
-  }, [locked, gabarito]); // Adicionado gabarito como dependência
+  }, [locked, gabarito]);
 
   return (
     <div className="flex flex-col h-screen">
