@@ -1,165 +1,172 @@
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
-    <meta charset="UTF-8" />
-    <title>CorrigePen PRO – Fix Cam</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
+  <meta charset="UTF-8" />
+  <title>CorrigePen PRO</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
 </head>
+
 <body class="bg-black text-white overflow-hidden">
-    <div id="root"></div>
+<div id="root"></div>
 
-    <script type="text/babel">
-        const { useEffect, useRef, useState } = React;
+<script type="text/babel">
+const { useEffect, useRef, useState } = React;
 
-        // CONFIGURAÇÃO OMR (Suas coordenadas)
-        const CONFIG = { startX: 315, startY: 340, gapX: 84, gapY: 69, size: 28, threshold: 38000 };
-        const GABARITO_PADRAO = ['A','B','C','A','B','C','A','B','C','A'];
+/* ================= CONFIG ================= */
+const CONFIG = {
+  startX: 315,
+  startY: 340,
+  gapX: 84,
+  gapY: 69,
+  size: 28,
+  threshold: 38000
+};
 
-        function App() {
-            const videoRef = useRef(null);
-            const canvasRef = useRef(null);
-            const [scanAtual, setScanAtual] = useState([]);
-            const [isLocked, setIsLocked] = useState(false);
-            const [error, setError] = useState(null);
+const GABARITO = ['A','B','C','A','B','C','A','B','C','A'];
+const FRAMES_ESTAVEIS = 5;
 
-            // 1. INICIAR CÂMERA COM TRATAMENTO DE ERRO
-            useEffect(() => {
-                const startVideo = async () => {
-                    try {
-                        const stream = await navigator.mediaDevices.getUserMedia({ 
-                            video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } } 
-                        });
-                        if (videoRef.current) {
-                            videoRef.current.srcObject = stream;
-                        }
-                    } catch (err) {
-                        setError("Erro ao acessar câmera. Verifique as permissões.");
-                        console.error(err);
-                    }
-                };
-                startVideo();
-            }, []);
+/* ================= APP ================= */
+function App() {
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const bufferRef = useRef([]);
 
-            // 2. LÓGICA DE PROCESSAMENTO
-            const processarFrame = () => {
-                const video = videoRef.current;
-                const canvas = canvasRef.current;
-                if (!video || !canvas || video.readyState < 2) return;
+  const [scanAtual, setScanAtual] = useState([]);
+  const [locked, setLocked] = useState(false);
+  const [error, setError] = useState(null);
 
-                const ctx = canvas.getContext("2d", { willReadFrequently: true });
-                
-                // Ajusta o canvas ao tamanho real do vídeo
-                if (canvas.width !== video.videoWidth) {
-                    canvas.width = video.videoWidth;
-                    canvas.height = video.videoHeight;
-                }
+  /* ===== CAMERA ===== */
+  useEffect(() => {
+    navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } }
+    }).then(stream => {
+      videoRef.current.srcObject = stream;
+    }).catch(() => {
+      setError("Erro ao acessar a câmera");
+    });
+  }, []);
 
-                ctx.drawImage(video, 0, 0);
+  /* ===== PROCESSAMENTO ===== */
+  const processarFrame = () => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas || video.readyState < 2) return;
 
-                const resultados = [];
-                for (let q = 0; q < 10; q++) {
-                    let marcada = null;
-                    let maiorEscuro = 0;
-                    let coordsEleita = null;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
 
-                    ['A','B','C'].forEach((opt, i) => {
-                        const x = CONFIG.startX + i * CONFIG.gapX;
-                        const y = CONFIG.startY + q * CONFIG.gapY;
-                        
-                        // Captura área do círculo
-                        const pixels = ctx.getImageData(x, y, CONFIG.size, CONFIG.size).data;
-                        let escuro = 0;
-                        for (let p = 0; p < pixels.length; p += 4) {
-                            escuro += 255 - (pixels[p] + pixels[p+1] + pixels[p+2]) / 3;
-                        }
+    if (canvas.width !== video.videoWidth) {
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+    }
 
-                        // Desenha guia visual
-                        ctx.strokeStyle = "rgba(255, 255, 255, 0.3)";
-                        ctx.strokeRect(x, y, CONFIG.size, CONFIG.size);
+    ctx.drawImage(video, 0, 0);
+    const leitura = [];
 
-                        if (escuro > CONFIG.threshold && escuro > maiorEscuro) {
-                            maiorEscuro = escuro;
-                            marcada = opt;
-                            coordsEleita = { x, y };
-                        }
-                    });
+    for (let q = 0; q < 10; q++) {
+      let marcacoes = [];
 
-                    // CIRCULO DE CONFIRMAÇÃO
-                    if (marcada && coordsEleita) {
-                        ctx.fillStyle = "rgba(0, 255, 0, 0.5)";
-                        ctx.beginPath();
-                        ctx.arc(coordsEleita.x + CONFIG.size/2, coordsEleita.y + CONFIG.size/2, CONFIG.size, 0, Math.PI*2);
-                        ctx.fill();
-                        ctx.strokeStyle = "#00FF00";
-                        ctx.stroke();
-                    }
-                    resultados.push(marcada);
-                }
-                setScanAtual(resultados);
-            };
+      ['A','B','C'].forEach((opt, i) => {
+        const x = CONFIG.startX + i * CONFIG.gapX;
+        const y = CONFIG.startY + q * CONFIG.gapY;
 
-            useEffect(() => {
-                const interval = setInterval(() => {
-                    if (!isLocked) processarFrame();
-                }, 100);
-                return () => clearInterval(interval);
-            }, [isLocked]);
-
-            if (error) return <div className="p-10 text-center text-red-500">{error}</div>;
-
-            return (
-                <div className="flex flex-col h-screen bg-black">
-                    {/* CAMERA */}
-                    <div className="relative flex-1 flex items-center justify-center overflow-hidden">
-                        <video 
-                            ref={videoRef} 
-                            autoPlay 
-                            playsInline 
-                            className={`absolute w-full h-full object-cover ${isLocked ? 'opacity-30' : 'opacity-100'}`}
-                        />
-                        <canvas 
-                            ref={canvasRef} 
-                            className="absolute w-full h-full object-cover"
-                        />
-                        
-                        {isLocked && (
-                            <div className="absolute left-4 top-10 bg-black/80 border border-green-500 p-3 rounded-lg font-mono text-xs">
-                                <p className="text-green-500 font-bold mb-1">REVISÃO:</p>
-                                {scanAtual.map((r, i) => (
-                                    <div key={i} className="flex gap-4 border-b border-white/10">
-                                        <span>Q{i+1}:</span> <span className="text-white">{r || "-"}</span>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-
-                    {/* BOTÕES */}
-                    <div className="p-6 bg-slate-900 flex gap-4">
-                        {!isLocked ? (
-                            <button 
-                                onClick={() => setIsLocked(true)}
-                                className="w-full bg-blue-600 py-6 rounded-2xl font-black text-xl uppercase"
-                            >
-                                📷 Capturar
-                            </button>
-                        ) : (
-                            <>
-                                <button onClick={() => setIsLocked(false)} className="flex-1 bg-slate-700 py-6 rounded-2xl font-bold uppercase">Voltar</button>
-                                <button onClick={() => { alert("Nota Salva!"); setIsLocked(false); }} className="flex-[2] bg-green-600 py-6 rounded-2xl font-black text-xl uppercase">Confirmar</button>
-                            </>
-                        )}
-                    </div>
-                </div>
-            );
+        const pixels = ctx.getImageData(x, y, CONFIG.size, CONFIG.size).data;
+        let escuro = 0;
+        for (let p = 0; p < pixels.length; p += 4) {
+          escuro += 255 - (pixels[p] + pixels[p+1] + pixels[p+2]) / 3;
         }
 
-        const root = ReactDOM.createRoot(document.getElementById("root"));
-        root.render(<App />);
-    </script>
+        ctx.strokeStyle = "rgba(255,255,255,0.25)";
+        ctx.strokeRect(x, y, CONFIG.size, CONFIG.size);
+
+        if (escuro > CONFIG.threshold) {
+          marcacoes.push({ opt, escuro, x, y });
+        }
+      });
+
+      if (marcacoes.length === 1) {
+        const m = marcacoes[0];
+        ctx.fillStyle = "rgba(0,255,0,0.4)";
+        ctx.beginPath();
+        ctx.arc(m.x + CONFIG.size/2, m.y + CONFIG.size/2, CONFIG.size, 0, Math.PI*2);
+        ctx.fill();
+        leitura.push(m.opt);
+      } else {
+        leitura.push(null);
+      }
+    }
+
+    bufferRef.current.push(leitura);
+    if (bufferRef.current.length > FRAMES_ESTAVEIS) {
+      bufferRef.current.shift();
+    }
+
+    const consenso = leitura.map((_, i) => {
+      const votos = bufferRef.current.map(f => f[i]);
+      const contagem = votos.reduce((a,v)=>{
+        a[v] = (a[v]||0)+1;
+        return a;
+      },{});
+      return Object.entries(contagem).sort((a,b)=>b[1]-a[1])[0]?.[0] || null;
+    });
+
+    setScanAtual(consenso);
+  };
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (!locked) processarFrame();
+    }, 120);
+    return () => clearInterval(timer);
+  }, [locked]);
+
+  if (error) return <div className="p-10 text-red-500 text-center">{error}</div>;
+
+  return (
+    <div className="flex flex-col h-screen">
+
+      {/* CAMERA */}
+      <div className="relative flex-1">
+        <video ref={videoRef} autoPlay playsInline className="absolute w-full h-full object-cover"/>
+        <canvas ref={canvasRef} className="absolute w-full h-full"/>
+
+        {locked && (
+          <div className="absolute left-4 top-4 bg-black/80 border border-green-500 p-3 rounded text-xs font-mono">
+            <p className="text-green-400 font-bold mb-2">REVISÃO</p>
+            {scanAtual.map((r,i)=>(
+              <div key={i}>Q{i+1}: {r || "-"}</div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* CONTROLES */}
+      <div className="p-6 bg-slate-900 flex gap-4">
+        {!locked ? (
+          <button onClick={()=>setLocked(true)} className="w-full bg-blue-600 py-6 rounded-2xl text-xl font-black">
+            📷 CAPTURAR
+          </button>
+        ) : (
+          <>
+            <button onClick={()=>setLocked(false)} className="flex-1 bg-slate-700 py-6 rounded-2xl font-bold">
+              Voltar
+            </button>
+            <button onClick={()=>{alert("Leitura confirmada"); setLocked(false);}} className="flex-[2] bg-green-600 py-6 rounded-2xl text-xl font-black">
+              Confirmar
+            </button>
+          </>
+        )}
+      </div>
+
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
 </body>
 </html>
