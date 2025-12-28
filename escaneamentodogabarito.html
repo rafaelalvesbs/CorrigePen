@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Scanner Pedagógico Pro</title>
+    <title>Scanner Integrado Firebase</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -12,24 +12,82 @@
 <body class="bg-slate-950 text-white overflow-hidden">
     <div id="root"></div>
 
-    <script type="text/babel">
+    <script type="module" type="text/babel">
+        // IMPORTAÇÕES DO FIREBASE (Igual ao seu arquivo de QR Code)
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js";
+        import { getDatabase, ref, get } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-database.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyCZ77ugK5a3pw-U0NH43F2x1bu09sS5pJg",
+            authDomain: "correcao-de-provas-f315d.firebaseapp.com",
+            projectId: "correcao-de-provas-f315d",
+            databaseURL: "https://correcao-de-provas-f315d-default-rtdb.firebaseio.com",
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+
         const { useState, useRef, useEffect } = React;
 
+        // SUAS COORDENADAS CALIBRADAS
         const CONFIG = {
             startX: 315, startY: 340, gapX: 84, gapY: 69,
             size: 25, threshold: 40000
         };
 
-        const GABARITO_OFICIAL = ['A', 'B', 'C', 'A', 'B', 'C', 'A', 'B', 'C', 'A'];
-
-        function App() {
+        function ScannerApp() {
             const videoRef = useRef(null);
             const canvasRef = useRef(null);
+            const [gabaritoOficial, setGabaritoOficial] = useState(null);
             const [alunoNotas, setAlunoNotas] = useState([]);
             const [currentScan, setCurrentScan] = useState(null);
-            const [isLocked, setIsLocked] = useState(false); // Trava a imagem para confirmação
+            const [isLocked, setIsLocked] = useState(false);
+            const [loading, setLoading] = useState(true);
 
-            // Efeito Sonoro
+            // 1. BUSCAR GABARITO NO FIREBASE AO INICIAR
+            useEffect(() => {
+                const params = new URLSearchParams(window.location.search);
+                const provaId = params.get("provaId");
+
+                if (!provaId) {
+                    alert("Erro: ID da prova não encontrado na URL.");
+                    return;
+                }
+
+                async function buscarGabarito() {
+                    try {
+                        const snapshot = await get(ref(db, `provas/${provaId}`));
+                        if (snapshot.exists()) {
+                            const dados = snapshot.val();
+                            // SUPOSIÇÃO: O campo no Firebase se chama 'gabarito' e é um array ['A', 'B'...]
+                            // Se o nome for diferente no seu banco, ajuste a linha abaixo:
+                            setGabaritoOficial(dados.gabarito || dados.respostas);
+                        } else {
+                            alert("Prova não encontrada no banco de dados.");
+                        }
+                    } catch (e) {
+                        console.error(e);
+                    } finally {
+                        setLoading(false);
+                    }
+                }
+                buscarGabarito();
+            }, []);
+
+            // 2. INICIAR CÂMERA
+            useEffect(() => {
+                if (!loading) {
+                    navigator.mediaDevices.getUserMedia({ 
+                        video: { facingMode: "environment", width: 1280, height: 720 } 
+                    }).then(stream => videoRef.current.srcObject = stream);
+                    
+                    const timer = setInterval(() => {
+                        if (!isLocked) scannerLogic();
+                    }, 100);
+                    return () => clearInterval(timer);
+                }
+            }, [isLocked, loading]);
+
             const playBeep = (freq = 440, duration = 0.1) => {
                 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
                 const oscillator = audioCtx.createOscillator();
@@ -41,17 +99,6 @@
                 oscillator.start();
                 oscillator.stop(audioCtx.currentTime + duration);
             };
-
-            useEffect(() => {
-                navigator.mediaDevices.getUserMedia({ 
-                    video: { facingMode: "environment", width: 1280, height: 720 } 
-                }).then(stream => videoRef.current.srcObject = stream);
-                
-                const timer = setInterval(() => {
-                    if (!isLocked) scannerLogic();
-                }, 100);
-                return () => clearInterval(timer);
-            }, [isLocked]);
 
             const scannerLogic = () => {
                 if (!videoRef.current || !canvasRef.current) return;
@@ -76,8 +123,7 @@
                             maxDark = dark;
                             marked = opt;
                         }
-                        // Feedback visual em tempo real
-                        ctx.strokeStyle = dark > CONFIG.threshold ? "#00ff00" : "rgba(255,255,255,0.3)";
+                        ctx.strokeStyle = dark > CONFIG.threshold ? "#00ff00" : "rgba(255,255,255,0.2)";
                         ctx.lineWidth = 3;
                         ctx.strokeRect(x, y, CONFIG.size, CONFIG.size);
                     });
@@ -86,74 +132,54 @@
                 setCurrentScan(detected);
             };
 
-            const handleLock = () => {
-                setIsLocked(true);
-                playBeep(660, 0.05); // Bip curto de captura
-            };
-
             const handleConfirm = () => {
-                const acertos = currentScan.reduce((acc, res, i) => res === GABARITO_OFICIAL[i] ? acc + 1 : acc, 0);
+                if (!gabaritoOficial) return alert("Gabarito oficial não carregado!");
+
+                const acertos = currentScan.reduce((acc, res, i) => 
+                    res === gabaritoOficial[i] ? acc + 1 : acc, 0);
+                
                 const novaNota = {
                     id: alunoNotas.length + 1,
                     acertos,
-                    nota: (acertos / 10 * 10).toFixed(1),
-                    respostas: [...currentScan]
+                    nota: (acertos / gabaritoOficial.length * 10).toFixed(1),
+                    hora: new Date().toLocaleTimeString()
                 };
+
                 setAlunoNotas([novaNota, ...alunoNotas]);
                 setIsLocked(false);
-                playBeep(880, 0.15); // Bip de sucesso
+                playBeep(880, 0.1);
             };
+
+            if (loading) return <div class="h-screen flex items-center justify-center">Carregando Gabarito...</div>;
 
             return (
                 <div class="flex flex-col h-screen">
-                    {/* VIEWPORT DA CÂMERA */}
                     <div class="relative flex-1 bg-black overflow-hidden">
-                        <video ref={videoRef} autoPlay playsInline class={`w-full h-full object-cover transition-opacity ${isLocked ? 'opacity-50' : 'opacity-100'}`} />
+                        <video ref={videoRef} autoPlay playsInline class={`w-full h-full object-cover ${isLocked ? 'opacity-40' : ''}`} />
                         <canvas ref={canvasRef} class="absolute top-0 left-0 w-full h-full object-cover" />
-                        
-                        {isLocked && (
-                            <div class="absolute inset-0 flex items-center justify-center bg-green-500/10 pointer-events-none">
-                                <div class="bg-green-600 text-white px-4 py-1 rounded-full text-sm font-bold animate-pulse">
-                                    CONFERIR MARCAÇÕES EM VERDE
-                                </div>
-                            </div>
-                        )}
+                        <div class="absolute top-4 right-4 bg-blue-600 px-3 py-1 rounded text-xs font-bold">
+                            Gabarito Carregado ✓
+                        </div>
                     </div>
 
-                    {/* HISTÓRICO LATERAL (Desktop) / TOPO (Mobile) */}
-                    <div class="h-32 bg-slate-900 border-t border-slate-700 flex items-center px-4 gap-4 overflow-x-auto">
-                        {alunoNotas.length === 0 && <p class="text-slate-500 text-sm italic">Nenhuma nota salva...</p>}
+                    <div class="h-24 bg-slate-900 flex items-center px-4 gap-4 overflow-x-auto border-t border-slate-800">
                         {alunoNotas.map(n => (
-                            <div key={n.id} class="bg-slate-800 border-l-4 border-green-500 p-2 rounded min-w-[100px]">
-                                <p class="text-[10px] text-gray-400">ALUNO #{n.id}</p>
-                                <p class="text-xl font-black text-green-400">{n.nota}</p>
+                            <div key={n.id} class="bg-slate-800 border-b-2 border-green-500 p-2 min-w-[80px] text-center">
+                                <p class="text-[9px] text-gray-400">ALUNO {n.id}</p>
+                                <p class="text-lg font-black text-green-400">{n.nota}</p>
                             </div>
                         ))}
                     </div>
 
-                    {/* BARRA DE BOTÕES FIXA INFERIOR */}
-                    <div class="bg-slate-900 p-4 pb-8 border-t border-slate-700 flex gap-4">
+                    <div class="bg-slate-900 p-4 pb-8 flex gap-4 shadow-2xl">
                         {!isLocked ? (
-                            <button 
-                                onClick={handleLock}
-                                class="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-black py-5 rounded-2xl shadow-xl active:scale-95 transition-all text-xl uppercase tracking-wider"
-                            >
-                                📷 Escanear Gabarito
+                            <button onClick={() => { setIsLocked(true); playBeep(600, 0.05); }} class="flex-1 bg-blue-600 py-5 rounded-2xl font-black text-xl uppercase tracking-tighter">
+                                Capturar Respostas
                             </button>
                         ) : (
                             <>
-                                <button 
-                                    onClick={() => setIsLocked(false)}
-                                    class="flex-[1] bg-slate-700 hover:bg-slate-600 text-white font-bold py-5 rounded-2xl active:scale-95 transition-all uppercase"
-                                >
-                                    Voltar
-                                </button>
-                                <button 
-                                    onClick={handleConfirm}
-                                    class="flex-[2] bg-green-600 hover:bg-green-500 text-white font-black py-5 rounded-2xl shadow-xl active:scale-95 transition-all text-xl uppercase tracking-wider"
-                                >
-                                    Confirmar e Salvar
-                                </button>
+                                <button onClick={() => setIsLocked(false)} class="flex-1 bg-slate-700 py-5 rounded-2xl font-bold uppercase">Voltar</button>
+                                <button onClick={handleConfirm} class="flex-[2] bg-green-600 py-5 rounded-2xl font-black text-xl uppercase">Confirmar Nota</button>
                             </>
                         )}
                     </div>
@@ -162,7 +188,7 @@
         }
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
+        root.render(<ScannerApp />);
     </script>
 </body>
 </html>
