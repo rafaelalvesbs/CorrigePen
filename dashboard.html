@@ -90,17 +90,6 @@
       color: #3f362d;
     }
 
-    .card.disabled {
-      opacity: 0.5;
-      cursor: default;
-    }
-
-    .soon {
-      margin-left: auto;
-      font-size: 12px;
-      color: #6b5f55;
-    }
-
     #btnLogout {
       margin-top: 24px;
       width: 100%;
@@ -137,7 +126,6 @@
         margin: 16px;
       }
     }
-    
   </style>
 </head>
 <body>
@@ -163,10 +151,10 @@
           <span class="title">Provas criadas</span>
         </button>
 
-        <button class="card disabled">
-          <span class="icon">📊</span>
-          <span class="title">Histórico</span>
-          <span class="soon">Em breve</span>
+        <!-- Botão substituído: Usuários -->
+        <button class="card" id="btnUsuarios">
+          <span class="icon">👥</span>
+          <span class="title">Usuários</span>
         </button>
       </div>
 
@@ -180,7 +168,6 @@
   <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
 
   <script>
-    // 🔥 CONFIGURAÇÃO DO FIREBASE
     const firebaseConfig = {
       apiKey: "AIzaSyCZ77ugK5a3pw-U0NH43F2x1bu09sS5pJg",
       authDomain: "correcao-de-provas-f315d.firebaseapp.com",
@@ -192,9 +179,8 @@
     const auth = firebase.auth();
     let tipoUsuarioLogado = null;
 
-    // 🔒 Proteção de rota
     const loader = document.getElementById("loader");
-    loader.style.display = "flex"; // mostra loader
+    loader.style.display = "flex";
 
     auth.onAuthStateChanged((user) => {
       if (!user) {
@@ -214,7 +200,7 @@
           }
         })
         .finally(() => {
-          loader.style.display = "none"; // esconde loader
+          loader.style.display = "none";
         });
     });
 
@@ -235,6 +221,11 @@
 
     document.getElementById("btnProvas").addEventListener("click", () => {
       window.location.href = "provascriadas.html";
+    });
+
+    // Botão Usuários
+    document.getElementById("btnUsuarios").addEventListener("click", () => {
+      window.location.href = "usuarios.html";
     });
 
     // Logout
