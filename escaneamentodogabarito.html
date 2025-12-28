@@ -3,110 +3,106 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Leitor de Gabarito Universal IA</title>
+    <title>Scanner Offline PRO</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-gray-100 min-h-screen">
+<body class="bg-black text-white min-h-screen">
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useRef } = React;
+        const { useState, useRef, useEffect } = React;
 
         function App() {
-            const [image, setImage] = useState(null);
-            const [results, setResults] = useState(null);
-            const [loading, setLoading] = useState(false);
-            
-            // CONFIGURAÇÃO
-            const OPENAI_API_KEY = "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"; 
-            const GABARITO_CORRETO = ["A", "B", "C", "D", "E"]; // Ajuste conforme sua prova
+            const videoRef = useRef(null);
+            const canvasRef = useRef(null);
+            const [config, setConfig] = useState({ startX: 100, startY: 150, gapX: 45, gapY: 40 });
+            const [results, setResults] = useState([]);
+            const [viewMode, setViewMode] = useState('camera'); // camera ou calibragem
 
-            const handleImage = (e) => {
-                const file = e.target.files[0];
-                const reader = new FileReader();
-                reader.onloadend = () => setImage(reader.result);
-                reader.readAsDataURL(file);
-            };
+            useEffect(() => {
+                navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: "environment", width: { ideal: 1280 } } 
+                }).then(stream => videoRef.current.srcObject = stream);
+                
+                const interval = setInterval(processFrame, 200);
+                return () => clearInterval(interval);
+            }, [config]);
 
-            const analisarGabarito = async () => {
-                if (!image) return;
-                setLoading(true);
+            const processFrame = () => {
+                if (!videoRef.current || !canvasRef.current) return;
+                const ctx = canvasRef.current.getContext('2d', { willReadFrequently: true });
+                canvasRef.current.width = videoRef.current.videoWidth;
+                canvasRef.current.height = videoRef.current.videoHeight;
+                ctx.drawImage(videoRef.current, 0, 0);
 
-                try {
-                    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-                        method: "POST",
-                        headers: {
-                            "Content-Type": "application/json",
-                            "Authorization": `Bearer ${OPENAI_API_KEY}`
-                        },
-                        body: JSON.stringify({
-                            model: "gpt-4o-mini",
-                            messages: [
-                                {
-                                    role: "user",
-                                    content: [
-                                        { type: "text", text: "Analise esta imagem de um gabarito de provas. Identifique quais opções (A, B, C, D ou E) foram marcadas pelo aluno em cada questão. Retorne APENAS um array JSON formatado assim: ['A', 'B', 'C', ...]. Se não houver marcação, coloque null." },
-                                        { type: "image_url", image_url: { url: image } }
-                                    ]
-                                }
-                            ],
-                            max_tokens: 300
-                        })
+                const newResults = [];
+                for (let q = 0; q < 10; q++) { // 10 questões
+                    let bestOpt = null;
+                    let maxDarkness = 0;
+                    
+                    ['A', 'B', 'C', 'D', 'E'].forEach((opt, i) => {
+                        const x = config.startX + (i * config.gapX);
+                        const y = config.startY + (q * config.gapY);
+                        
+                        const imageData = ctx.getImageData(x, y, 20, 20);
+                        const data = imageData.data;
+                        let darkness = 0;
+                        for (let p = 0; p < data.length; p += 4) {
+                            darkness += (255 - (data[p] + data[p+1] + data[p+2]) / 3);
+                        }
+
+                        // Desenha o feedback visual
+                        ctx.strokeStyle = darkness > 35000 ? "#00FF00" : "#FFFFFF";
+                        ctx.lineWidth = 2;
+                        ctx.strokeRect(x, y, 20, 20);
+
+                        if (darkness > 35000 && darkness > maxDarkness) {
+                            maxDarkness = darkness;
+                            bestOpt = opt;
+                        }
                     });
-
-                    const data = await response.json();
-                    const parsedResults = JSON.parse(data.choices[0].message.content);
-                    setResults(parsedResults);
-                } catch (error) {
-                    alert("Erro ao processar imagem. Verifique sua chave API.");
-                    console.error(error);
-                } finally {
-                    setLoading(false);
+                    newResults.push(bestOpt);
                 }
+                setResults(newResults);
             };
 
             return (
-                <div class="max-w-md mx-auto p-6 flex flex-col items-center">
-                    <h1 class="text-2xl font-bold text-gray-800 mb-6">Scanner Universal 🎯</h1>
-                    
-                    <div class="w-full bg-white p-4 rounded-2xl shadow-lg mb-6 text-center">
-                        <input 
-                            type="file" 
-                            accept="image/*" 
-                            capture="environment" 
-                            onChange={handleImage}
-                            class="mb-4 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700"
-                        />
+                <div class="flex flex-col h-screen overflow-hidden">
+                    <div class="relative flex-1 bg-black">
+                        <video ref={videoRef} autoPlay playsInline class="w-full h-full object-cover" />
+                        <canvas ref={canvasRef} class="absolute top-0 left-0 w-full h-full object-cover" />
                         
-                        {image && <img src={image} class="rounded-lg mb-4 max-h-64 mx-auto" />}
-                        
-                        <button 
-                            onClick={analisarGabarito}
-                            disabled={!image || loading}
-                            class={`w-full py-3 rounded-xl font-bold text-white transition ${loading ? 'bg-gray-400' : 'bg-blue-600 hover:bg-blue-700'}`}
-                        >
-                            {loading ? "Processando..." : "Corrigir Agora"}
-                        </button>
-                    </div>
-
-                    {results && (
-                        <div class="w-full bg-white p-6 rounded-2xl shadow-lg animate-in fade-in">
-                            <h2 class="text-lg font-bold mb-4">Resultado:</h2>
-                            <div class="space-y-2">
+                        {/* Painel de Controle Flutuante */}
+                        <div class="absolute bottom-4 left-4 right-4 bg-white/10 backdrop-blur-md p-4 rounded-2xl border border-white/20">
+                            <div class="grid grid-cols-2 gap-4 mb-4">
+                                <div>
+                                    <label class="text-[10px] block text-gray-400">POSIÇÃO INICIAL (X/Y)</label>
+                                    <div class="flex gap-2">
+                                        <input type="range" min="0" max="500" value={config.startX} onChange={e => setConfig({...config, startX: parseInt(e.target.value)})} class="w-full h-1" />
+                                        <input type="range" min="0" max="500" value={config.startY} onChange={e => setConfig({...config, startY: parseInt(e.target.value)})} class="w-full h-1" />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="text-[10px] block text-gray-400">ESPAÇAMENTO (X/Y)</label>
+                                    <div class="flex gap-2">
+                                        <input type="range" min="10" max="100" value={config.gapX} onChange={e => setConfig({...config, gapX: parseInt(e.target.value)})} class="w-full h-1" />
+                                        <input type="range" min="10" max="100" value={config.gapY} onChange={e => setConfig({...config, gapY: parseInt(e.target.value)})} class="w-full h-1" />
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="flex overflow-x-auto gap-2 py-2">
                                 {results.map((res, i) => (
-                                    <div key={i} class="flex justify-between border-b pb-1">
-                                        <span>Questão {i + 1}:</span>
-                                        <span class={`font-bold ${res === GABARITO_CORRETO[i] ? 'text-green-600' : 'text-red-600'}`}>
-                                            {res || "Vazio"} {res === GABARITO_CORRETO[i] ? "✅" : `❌ (Certo: ${GABARITO_CORRETO[i]})`}
-                                        </span>
+                                    <div key={i} class={`min-w-[40px] h-10 flex items-center justify-center rounded-lg font-bold border ${res ? 'bg-green-600 border-green-400' : 'bg-white/5 border-white/20 text-gray-500'}`}>
+                                        {res || '?'}
                                     </div>
                                 ))}
                             </div>
                         </div>
-                    )}
+                    </div>
                 </div>
             );
         }
