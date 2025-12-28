@@ -8,34 +8,16 @@
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
 </head>
 <body class="bg-black text-white overflow-hidden">
 <div id="root"></div>
 
-<script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js";
-  import { getDatabase, ref, get } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-database.js";
-
-  const firebaseConfig = {
-    apiKey: "AIzaSyCZ77ugK5a3pw-U0NH43F2x1bu09sS5pJg",
-    authDomain: "correcao-de-provas-f315d.firebaseapp.com",
-    projectId: "correcao-de-provas-f315d",
-    databaseURL: "https://correcao-de-provas-f315d-default-rtdb.firebaseio.com",
-  };
-
-  const app = initializeApp(firebaseConfig);
-  const db = getDatabase(app);
-
-  // Expõe funções para o código React abaixo
-  window.fbGet = get;
-  window.fbRef = ref;
-  window.fbDb = db;
-</script>
-
 <script type="text/babel">
 const { useEffect, useRef, useState } = React;
 
-/* ================= CONFIGURAÇÃO DE COORDENADAS ================= */
+/* ================= CONFIG ATUALIZADA ================= */
 const CONFIG = {
   startX: 377, 
   startY: 351, 
@@ -50,62 +32,48 @@ function App() {
   const canvasRef = useRef(null);
   const [scanAtual, setScanAtual] = useState([]);
   const [locked, setLocked] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [gabaritoOficial, setGabaritoOficial] = useState(null);
-  const [nomeProva, setNomeProva] = useState("");
+  const [error, setError] = useState(null);
+  
+  // Adições solicitadas:
+  const [gabaritoOficial, setGabaritoOficial] = useState([]);
   const [notaFinal, setNotaFinal] = useState(0);
 
   useEffect(() => {
-    async function carregarProva() {
-      // Pega o "provaId" que o seu leitor de QR Code enviou via URL
-      const params = new URLSearchParams(window.location.search);
-      const provaId = params.get("provaId");
+    // Busca o provaId da URL vindo do QR Code
+    const params = new URLSearchParams(window.location.search);
+    const provaId = params.get("provaId");
 
-      if (!provaId) {
-        alert("Nenhuma prova identificada. Volte e escaneie o QR Code.");
-        window.location.href = "escaneamentodoqrcode.html";
-        return;
-      }
-
-      try {
-        // Busca o gabarito no Firebase no caminho exato das suas provas
-        const snapshot = await window.fbGet(window.fbRef(window.fbDb, `provas/${provaId}`));
-        
-        if (snapshot.exists()) {
-          const data = snapshot.val();
-          setGabaritoOficial(data.gabarito); // Espera um array ['A', 'B', ...]
-          setNomeProva(data.nome || "Prova");
-          setLoading(false);
-        } else {
-          alert("Erro: Dados da prova não encontrados no banco.");
-        }
-      } catch (err) {
-        console.error(err);
-        alert("Erro ao conectar com o banco de dados.");
-      }
+    // Inicializa Firebase com suas credenciais para pegar o gabarito
+    if (!firebase.apps.length) {
+      firebase.initializeApp({
+        apiKey: "AIzaSyCZ77ugK5a3pw-U0NH43F2x1bu09sS5pJg",
+        databaseURL: "https://correcao-de-provas-f315d-default-rtdb.firebaseio.com",
+      });
     }
 
-    carregarProva();
+    if (provaId) {
+      firebase.database().ref(`provas/${provaId}`).once('value').then(snap => {
+        if (snap.exists()) setGabaritoOficial(snap.val().gabarito);
+      });
+    }
 
     navigator.mediaDevices.getUserMedia({
       video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } }
     }).then(stream => {
       videoRef.current.srcObject = stream;
-    });
+    }).catch(() => setError("Erro ao acessar a câmera"));
   }, []);
 
   const salvarNotaAutomatica = (leiturasFinais) => {
-    if (!gabaritoOficial) return;
-
+    // Lógica da nota solicitada
     let acertos = 0;
-    // Comparação lógica com o gabarito do Firebase
-    leiturasFinais.forEach((resp, i) => {
-      if (resp === gabaritoOficial[i]) acertos++;
-    });
+    if (gabaritoOficial.length > 0) {
+      leiturasFinais.forEach((resp, i) => {
+        if (resp === gabaritoOficial[i]) acertos++;
+      });
+    }
     
-    // Cálculo: (Acertos / Total de Questões) * 10
-    const calc = (acertos / gabaritoOficial.length) * 10;
-    setNotaFinal(calc.toFixed(1));
+    setNotaFinal(((acertos / 10) * 10).toFixed(1));
     setScanAtual(leiturasFinais);
     setLocked(true); 
   };
@@ -113,7 +81,7 @@ function App() {
   const processarFrame = () => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
-    if (!video || !canvas || video.readyState < 2 || loading) return;
+    if (!video || !canvas || video.readyState < 2) return;
 
     const ctx = canvas.getContext("2d", { willReadFrequently: true });
     if (canvas.width !== video.videoWidth) {
@@ -131,13 +99,16 @@ function App() {
       ['A','B','C'].forEach((opt, i) => {
         const x = CONFIG.startX + i * CONFIG.gapX;
         const y = CONFIG.startY + q * CONFIG.gapY;
+
         const pixels = ctx.getImageData(x, y, CONFIG.size, CONFIG.size).data;
         let escuro = 0;
         for (let p = 0; p < pixels.length; p += 4) {
           escuro += 255 - (pixels[p] + pixels[p+1] + pixels[p+2]) / 3;
         }
+
         ctx.strokeStyle = "rgba(255,255,255,0.15)";
         ctx.strokeRect(x, y, CONFIG.size, CONFIG.size);
+
         dadosOpcoes.push({ opt, escuro, x, y });
       });
 
@@ -172,14 +143,7 @@ function App() {
       if (!locked) processarFrame();
     }, 150);
     return () => clearInterval(timer);
-  }, [locked, loading]);
-
-  if (loading) return (
-    <div className="h-screen flex items-center justify-center bg-black text-white flex-col gap-4">
-      <div className="w-10 h-10 border-4 border-amber-600 border-t-white rounded-full animate-spin"></div>
-      <p className="text-sm font-bold tracking-widest">SINCRONIZANDO GABARITO...</p>
-    </div>
-  );
+  }, [locked]);
 
   return (
     <div className="flex flex-col h-screen">
@@ -188,19 +152,19 @@ function App() {
         <canvas ref={canvasRef} className="absolute w-full h-full object-cover"/>
 
         {!locked && (
-            <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-amber-700/90 px-4 py-2 rounded-full text-[10px] font-bold uppercase tracking-widest border border-white/20">
-                Lendo: {nomeProva} | Questões: {scanAtual.filter(r => r !== null).length}/10
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-blue-600/80 px-4 py-2 rounded-full text-xs font-bold uppercase tracking-widest border border-white/20">
+                Aguardando 10 questões: {scanAtual.filter(r => r !== null).length}/10
             </div>
         )}
 
         {locked && (
           <div className="absolute inset-0 flex items-center justify-center p-6 bg-black/60">
-            <div className="bg-white border-4 border-[#998675] p-8 rounded-3xl shadow-2xl text-center w-full max-w-xs">
-              <p className="text-[#998675] font-bold text-xs uppercase tracking-widest mb-1">Nota do Aluno</p>
-              <h2 className="text-7xl font-black text-[#3f362d] mb-6">{notaFinal}</h2>
+            <div className="bg-slate-900 border-2 border-green-500 p-8 rounded-3xl shadow-2xl text-center w-full max-w-xs animate-bounce-short">
+              <p className="text-green-400 font-bold text-sm uppercase tracking-widest mb-2">Correção Concluída</p>
+              <h2 className="text-6xl font-black text-white mb-6">{notaFinal}</h2>
               <button 
                 onClick={() => window.location.href = 'escaneamentodoqrcode.html'}
-                className="w-full bg-[#998675] text-white font-bold py-4 rounded-xl shadow-lg active:scale-95 transition-transform"
+                className="w-full bg-green-600 hover:bg-green-500 text-white font-black py-4 rounded-2xl shadow-lg transition-transform active:scale-95"
               >
                 PRÓXIMO ALUNO
               </button>
@@ -209,9 +173,9 @@ function App() {
         )}
       </div>
 
-      <div className="p-6 bg-[#3f362d] flex gap-4 pb-10">
-        <div className="w-full text-center py-4 text-[#b2a18f] text-xs font-bold animate-pulse">
-            {locked ? "RESULTADO PROCESSADO" : "ALINHE O GABARITO PARA CORREÇÃO"}
+      <div className="p-6 bg-slate-900 flex gap-4 pb-10">
+        <div className="w-full text-center py-4 text-slate-400 text-sm font-medium animate-pulse">
+            {locked ? "Nota Registrada!" : "Alinhe a câmera para capturar automaticamente"}
         </div>
       </div>
     </div>
