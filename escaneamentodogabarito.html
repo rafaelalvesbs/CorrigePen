@@ -34,46 +34,66 @@ function App() {
   const [locked, setLocked] = useState(false);
   const [error, setError] = useState(null);
   
-  // Adições solicitadas:
-  const [gabaritoOficial, setGabaritoOficial] = useState([]);
+  // Estado para armazenar o gabarito vindo do Firebase
+  const [gabarito, setGabarito] = useState([]); 
   const [notaFinal, setNotaFinal] = useState(0);
 
   useEffect(() => {
-    // Busca o provaId da URL vindo do QR Code
+    // 1. Configuração do Firebase dentro do efeito
+    const firebaseConfig = {
+      apiKey: "AIzaSyCZ77ugK5a3pw-U0NH43F2x1bu09sS5pJg",
+      authDomain: "correcao-de-provas-f315d.firebaseapp.com",
+      projectId: "correcao-de-provas-f315d",
+      databaseURL: "https://correcao-de-provas-f315d-default-rtdb.firebaseio.com",
+    };
+
+    if (!firebase.apps.length) {
+      firebase.initializeApp(firebaseConfig);
+    }
+    const db = firebase.database();
+
+    // 2. Pegar provaId da URL
     const params = new URLSearchParams(window.location.search);
     const provaId = params.get("provaId");
 
-    // Inicializa Firebase com suas credenciais para pegar o gabarito
-    if (!firebase.apps.length) {
-      firebase.initializeApp({
-        apiKey: "AIzaSyCZ77ugK5a3pw-U0NH43F2x1bu09sS5pJg",
-        databaseURL: "https://correcao-de-provas-f315d-default-rtdb.firebaseio.com",
-      });
-    }
-
     if (provaId) {
-      firebase.database().ref(`provas/${provaId}`).once('value').then(snap => {
-        if (snap.exists()) setGabaritoOficial(snap.val().gabarito);
+      // Busca o gabarito da prova específica
+      db.ref(`provas/${provaId}`).once('value').then(snapshot => {
+        if (snapshot.exists()) {
+          const dadosProva = snapshot.val();
+          // Aqui pegamos o campo 'gabarito' que deve ser um array ['A', 'B', ...]
+          if (dadosProva.gabarito) {
+            setGabarito(dadosProva.gabarito);
+          }
+        } else {
+          alert("Gabarito não encontrado para esta prova.");
+        }
       });
     }
 
+    // Acesso à câmera
     navigator.mediaDevices.getUserMedia({
       video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } }
     }).then(stream => {
       videoRef.current.srcObject = stream;
     }).catch(() => setError("Erro ao acessar a câmera"));
+
   }, []);
 
   const salvarNotaAutomatica = (leiturasFinais) => {
-    // Lógica da nota solicitada
-    let acertos = 0;
-    if (gabaritoOficial.length > 0) {
-      leiturasFinais.forEach((resp, i) => {
-        if (resp === gabaritoOficial[i]) acertos++;
-      });
+    if (gabarito.length === 0) {
+      alert("Aguardando carregamento do gabarito...");
+      return;
     }
+
+    // Cálculo da nota comparando com o gabarito oficial
+    let acertos = 0;
+    leiturasFinais.forEach((resp, i) => {
+      if (resp === gabarito[i]) acertos++;
+    });
     
-    setNotaFinal(((acertos / 10) * 10).toFixed(1));
+    const calculo = (acertos / gabarito.length) * 10;
+    setNotaFinal(calculo.toFixed(1));
     setScanAtual(leiturasFinais);
     setLocked(true); 
   };
@@ -143,7 +163,7 @@ function App() {
       if (!locked) processarFrame();
     }, 150);
     return () => clearInterval(timer);
-  }, [locked]);
+  }, [locked, gabarito]); // Adicionado gabarito como dependência
 
   return (
     <div className="flex flex-col h-screen">
@@ -152,8 +172,8 @@ function App() {
         <canvas ref={canvasRef} className="absolute w-full h-full object-cover"/>
 
         {!locked && (
-            <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-blue-600/80 px-4 py-2 rounded-full text-xs font-bold uppercase tracking-widest border border-white/20">
-                Aguardando 10 questões: {scanAtual.filter(r => r !== null).length}/10
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-blue-600/80 px-4 py-2 rounded-full text-xs font-bold uppercase tracking-widest border border-white/20 whitespace-nowrap">
+                {gabarito.length > 0 ? `Questões: ${scanAtual.filter(r => r !== null).length}/10` : "Carregando Gabarito..."}
             </div>
         )}
 
