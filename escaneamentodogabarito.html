@@ -55,7 +55,12 @@ function App() {
     if (provaId) {
       firebase.database().ref(`gabaritos/${provaId}`).once('value').then(snapshot => {
         if (snapshot.exists()) {
-          setGabarito(snapshot.val());
+          const data = snapshot.val();
+          // CONSERTO: Transforma o objeto {1:"A", 2:"B"} em um array ["A", "B"]
+          const formatado = Object.keys(data)
+            .sort((a, b) => parseInt(a) - parseInt(b))
+            .map(key => data[key]);
+          setGabarito(formatado);
         }
       });
     }
@@ -68,19 +73,15 @@ function App() {
   }, []);
 
   const salvarNotaAutomatica = (leiturasFinais) => {
-    if (!gabarito) return;
+    if (!gabarito || gabarito.length === 0) return;
+
     setLocked(true);
 
     setTimeout(() => {
       let acertos = 0;
-      
-      // CONSERTO AQUI: Convertendo o gabarito para array caso venha como objeto do Firebase
-      const gabaritoArray = Array.isArray(gabarito) 
-        ? gabarito 
-        : Object.keys(gabarito).sort((a,b) => a-b).map(key => gabarito[key]);
-
+      // Compara a leitura (0-9) com o gabarito formatado (0-9)
       leiturasFinais.forEach((resp, i) => {
-        if (resp === gabaritoArray[i]) acertos++;
+        if (resp === gabarito[i]) acertos++;
       });
       
       const calculo = acertos * 2;
@@ -178,9 +179,9 @@ function App() {
                   </button>
                 </>
               ) : (
-                <div className="py-10">
-                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
-                  <p className="text-white font-bold">CALCULANDO NOTA...</p>
+                <div className="py-8">
+                  <div className="w-12 h-12 border-4 border-green-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                  <p className="text-white font-bold animate-pulse">PROCESSANDO NOTA...</p>
                 </div>
               )}
             </div>
