@@ -1,144 +1,187 @@
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Leitor de Gabarito Final</title>
-    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
+  <meta charset="UTF-8" />
+  <title>CorrigePen – Leitor de Gabarito</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <!-- React -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- Tailwind -->
+  <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-slate-900 text-white font-sans">
-    <div id="root"></div>
 
-    <script type="text/babel">
-        const { useState, useRef, useEffect } = React;
+<body class="bg-slate-900 text-white">
+  <div id="root"></div>
 
-        // SEUS DADOS CALIBRADOS
-        const CONFIG = {
-            startX: 315,
-            startY: 340,
-            gapX: 84,
-            gapY: 69,
-            size: 25, // Tamanho da área de leitura
-            threshold: 40000 // Sensibilidade do preto (ajuste se necessário)
-        };
+  <script type="text/babel">
+    const { useEffect, useRef, useState } = React;
 
-        // GABARITO PARA CORREÇÃO (Altere aqui as respostas certas)
-        const RESPOSTAS_CORRETAS = ['A', 'B', 'C', 'A', 'B', 'C', 'A', 'B', 'C', 'A'];
+    /* ================= CONFIGURAÇÃO OMR ================= */
+    const CONFIG = {
+      startX: 315,
+      startY: 340,
+      gapX: 84,
+      gapY: 69,
+      size: 25,
+      threshold: 38000
+    };
 
-        function App() {
-            const videoRef = useRef(null);
-            const canvasRef = useRef(null);
-            const [alunoNotas, setAlunoNotas] = useState([]);
-            const [currentScan, setCurrentScan] = useState([]);
+    const GABARITO = ['A','B','C','A','B','C','A','B','C','A'];
 
-            useEffect(() => {
-                navigator.mediaDevices.getUserMedia({ 
-                    video: { facingMode: "environment", width: 1280, height: 720 } 
-                }).then(stream => videoRef.current.srcObject = stream);
-                
-                const timer = setInterval(scannerLogic, 150);
-                return () => clearInterval(timer);
-            }, []);
+    /* ================= APP ================= */
+    function App() {
+      const videoRef = useRef(null);
+      const canvasRef = useRef(null);
+      const scanFn = useRef(null);
 
-            const scannerLogic = () => {
-                if (!videoRef.current || !canvasRef.current) return;
-                const ctx = canvasRef.current.getContext('2d', { willReadFrequently: true });
-                
-                canvasRef.current.width = videoRef.current.videoWidth;
-                canvasRef.current.height = videoRef.current.videoHeight;
-                ctx.drawImage(videoRef.current, 0, 0);
+      const [scanAtual, setScanAtual] = useState([]);
+      const [historico, setHistorico] = useState([]);
 
-                const detected = [];
-                for (let q = 0; q < 10; q++) {
-                    let marked = null;
-                    let maxDark = 0;
+      /* ===== CAMERA ===== */
+      useEffect(() => {
+        navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "environment", width: 1280, height: 720 }
+        }).then(stream => {
+          videoRef.current.srcObject = stream;
+        });
+      }, []);
 
-                    ['A', 'B', 'C'].forEach((opt, i) => {
-                        const x = CONFIG.startX + (i * CONFIG.gapX);
-                        const y = CONFIG.startY + (q * CONFIG.gapY);
-                        
-                        const data = ctx.getImageData(x, y, CONFIG.size, CONFIG.size).data;
-                        let dark = 0;
-                        for (let p = 0; p < data.length; p += 4) {
-                            dark += (255 - (data[p] + data[p+1] + data[p+2]) / 3);
-                        }
+      /* ===== SCANNER ===== */
+      scanFn.current = () => {
+        const video = videoRef.current;
+        const canvas = canvasRef.current;
+        if (!video || !canvas || video.videoWidth === 0) return;
 
-                        if (dark > CONFIG.threshold && dark > maxDark) {
-                            maxDark = dark;
-                            marked = opt;
-                        }
-                        
-                        // Desenha feedback na tela
-                        ctx.strokeStyle = dark > CONFIG.threshold ? "#00ff00" : "#ff0000";
-                        ctx.strokeRect(x, y, CONFIG.size, CONFIG.size);
-                    });
-                    detected.push(marked);
-                }
-                setCurrentScan(detected);
-            };
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });
 
-            const salvarNota = () => {
-                const acertos = currentScan.reduce((acc, res, i) => res === RESPOSTAS_CORRETAS[i] ? acc + 1 : acc, 0);
-                const novaNota = {
-                    id: alunoNotas.length + 1,
-                    acertos,
-                    nota: (acertos / 10 * 10).toFixed(1),
-                    data: new Date().toLocaleTimeString()
-                };
-                setAlunoNotas([novaNota, ...alunoNotas]);
-            };
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
 
-            return (
-                <div class="flex flex-col lg:flex-row h-screen">
-                    {/* Lado Esquerdo: Câmera */}
-                    <div class="relative flex-[2] bg-black">
-                        <video ref={videoRef} autoPlay playsInline class="w-full h-full object-contain" />
-                        <canvas ref={canvasRef} class="absolute top-0 left-0 w-full h-full object-contain pointer-events-none opacity-60" />
-                        
-                        <div class="absolute top-4 left-4 bg-black/60 p-2 rounded text-xs font-mono">
-                            Status: Scanner Ativo (ABC - 10 Questões)
-                        </div>
-                    </div>
+        ctx.drawImage(video, 0, 0);
 
-                    {/* Lado Direito: Resultados */}
-                    <div class="flex-1 bg-slate-800 p-6 overflow-y-auto border-l border-slate-700">
-                        <h2 class="text-xl font-bold mb-4 border-b border-slate-600 pb-2">Resultados</h2>
-                        
-                        <button 
-                            onClick={salvarNota}
-                            class="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-4 rounded-xl mb-6 shadow-lg transition-all active:scale-95"
-                        >
-                            CONFIRMAR E SALVAR NOTA
-                        </button>
+        const respostas = [];
 
-                        <div class="space-y-3">
-                            {alunoNotas.map(item => (
-                                <div key={item.id} class="bg-slate-700 p-3 rounded-lg flex justify-between items-center border-l-4 border-green-500">
-                                    <div>
-                                        <p class="text-[10px] text-slate-400">Aluno #{item.id} - {item.data}</p>
-                                        <p class="font-bold uppercase text-sm">{item.acertos} Acertos</p>
-                                    </div>
-                                    <div class="text-2xl font-black text-green-400">{item.nota}</div>
-                                </div>
-                            ))}
-                        </div>
+        for (let q = 0; q < 10; q++) {
+          let marcada = null;
+          let maiorEscuro = 0;
 
-                        {alunoNotas.length === 0 && (
-                            <div class="text-center text-slate-500 mt-10">
-                                <p>Nenhum aluno escaneado ainda.</p>
-                                <p class="text-xs">Aponte a câmera e clique no botão verde.</p>
-                            </div>
-                        )}
-                    </div>
-                </div>
-            );
+          ['A','B','C'].forEach((opt, i) => {
+            const x = CONFIG.startX + i * CONFIG.gapX;
+            const y = CONFIG.startY + q * CONFIG.gapY;
+
+            const img = ctx.getImageData(x, y, CONFIG.size, CONFIG.size).data;
+            let escuro = 0;
+
+            for (let p = 0; p < img.length; p += 4) {
+              escuro += 255 - (img[p] + img[p+1] + img[p+2]) / 3;
+            }
+
+            if (escuro > CONFIG.threshold && escuro > maiorEscuro) {
+              maiorEscuro = escuro;
+              marcada = opt;
+            }
+
+            ctx.strokeStyle = escuro > CONFIG.threshold ? "#00ff00" : "#ff0000";
+            ctx.lineWidth = 2;
+            ctx.strokeRect(x, y, CONFIG.size, CONFIG.size);
+          });
+
+          respostas.push(marcada);
         }
 
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
-    </script>
+        setScanAtual(respostas);
+      };
+
+      /* ===== LOOP ===== */
+      useEffect(() => {
+        const timer = setInterval(() => {
+          scanFn.current();
+        }, 180);
+        return () => clearInterval(timer);
+      }, []);
+
+      /* ===== SALVAR ===== */
+      const salvar = () => {
+        const acertos = scanAtual.reduce(
+          (acc, r, i) => r === GABARITO[i] ? acc + 1 : acc,
+          0
+        );
+
+        setHistorico([
+          {
+            id: Date.now(),
+            acertos,
+            nota: ((acertos / GABARITO.length) * 10).toFixed(1),
+            hora: new Date().toLocaleTimeString()
+          },
+          ...historico
+        ]);
+      };
+
+      /* ================= UI ================= */
+      return (
+        <div className="flex flex-col lg:flex-row h-screen">
+
+          {/* CAMERA */}
+          <div className="relative flex-[2] bg-black">
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              className="w-full h-full"
+            />
+            <canvas
+              ref={canvasRef}
+              className="absolute top-0 left-0 pointer-events-none opacity-70"
+            />
+            <div className="absolute top-3 left-3 bg-black/60 px-3 py-1 rounded text-xs">
+              Scanner ativo – 10 questões (ABC)
+            </div>
+          </div>
+
+          {/* RESULTADOS */}
+          <div className="flex-1 bg-slate-800 p-6 overflow-y-auto border-l border-slate-700">
+            <h2 className="text-xl font-bold mb-4">Resultados</h2>
+
+            <button
+              onClick={salvar}
+              className="w-full bg-green-600 hover:bg-green-500 py-4 rounded-xl font-bold mb-6"
+            >
+              CONFIRMAR E SALVAR NOTA
+            </button>
+
+            {historico.length === 0 && (
+              <p className="text-slate-400 text-center">
+                Nenhuma leitura salva ainda
+              </p>
+            )}
+
+            <div className="space-y-3">
+              {historico.map(item => (
+                <div
+                  key={item.id}
+                  className="bg-slate-700 p-3 rounded-lg flex justify-between items-center border-l-4 border-green-500"
+                >
+                  <div>
+                    <p className="text-xs text-slate-400">{item.hora}</p>
+                    <p className="font-bold">{item.acertos} acertos</p>
+                  </div>
+                  <div className="text-2xl font-black text-green-400">
+                    {item.nota}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
 </body>
 </html>
