@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Scanner Offline PRO</title>
+    <title>Calibrador de Coordenadas OMR</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-black text-white min-h-screen">
+<body class="bg-gray-900 text-white">
     <div id="root"></div>
 
     <script type="text/babel">
@@ -18,89 +18,112 @@
         function App() {
             const videoRef = useRef(null);
             const canvasRef = useRef(null);
-            const [config, setConfig] = useState({ startX: 100, startY: 150, gapX: 45, gapY: 40 });
-            const [results, setResults] = useState([]);
-            const [viewMode, setViewMode] = useState('camera'); // camera ou calibragem
+            
+            // Estado das coordenadas que você vai copiar
+            const [coords, setCoords] = useState({
+                startX: 100,
+                startY: 150,
+                gapX: 60,
+                gapY: 45,
+                size: 20
+            });
 
             useEffect(() => {
                 navigator.mediaDevices.getUserMedia({ 
                     video: { facingMode: "environment", width: { ideal: 1280 } } 
                 }).then(stream => videoRef.current.srcObject = stream);
                 
-                const interval = setInterval(processFrame, 200);
-                return () => clearInterval(interval);
-            }, [config]);
+                const render = () => {
+                    drawGrid();
+                    requestAnimationFrame(render);
+                };
+                render();
+            }, [coords]);
 
-            const processFrame = () => {
+            const drawGrid = () => {
                 if (!videoRef.current || !canvasRef.current) return;
-                const ctx = canvasRef.current.getContext('2d', { willReadFrequently: true });
+                const ctx = canvasRef.current.getContext('2d');
                 canvasRef.current.width = videoRef.current.videoWidth;
                 canvasRef.current.height = videoRef.current.videoHeight;
+                
                 ctx.drawImage(videoRef.current, 0, 0);
 
-                const newResults = [];
-                for (let q = 0; q < 10; q++) { // 10 questões
-                    let bestOpt = null;
-                    let maxDarkness = 0;
-                    
-                    ['A', 'B', 'C', 'D', 'E'].forEach((opt, i) => {
-                        const x = config.startX + (i * config.gapX);
-                        const y = config.startY + (q * config.gapY);
+                // Desenha a grade de 10x3 (A, B, C)
+                ctx.lineWidth = 2;
+                for (let q = 0; q < 10; q++) {
+                    ['A', 'B', 'C'].forEach((opt, i) => {
+                        const x = coords.startX + (i * coords.gapX);
+                        const y = coords.startY + (q * coords.gapY);
                         
-                        const imageData = ctx.getImageData(x, y, 20, 20);
-                        const data = imageData.data;
-                        let darkness = 0;
-                        for (let p = 0; p < data.length; p += 4) {
-                            darkness += (255 - (data[p] + data[p+1] + data[p+2]) / 3);
-                        }
-
-                        // Desenha o feedback visual
-                        ctx.strokeStyle = darkness > 35000 ? "#00FF00" : "#FFFFFF";
-                        ctx.lineWidth = 2;
-                        ctx.strokeRect(x, y, 20, 20);
-
-                        if (darkness > 35000 && darkness > maxDarkness) {
-                            maxDarkness = darkness;
-                            bestOpt = opt;
+                        // Desenha o quadrado de detecção
+                        ctx.strokeStyle = "#00FF00";
+                        ctx.strokeRect(x, y, coords.size, coords.size);
+                        
+                        // Desenha a legenda da coordenada apenas no primeiro e último
+                        if(q === 0 || q === 9) {
+                            ctx.fillStyle = "#00FF00";
+                            ctx.font = "10px Monospace";
+                            ctx.fillText(`${opt}${q+1}`, x, y - 5);
                         }
                     });
-                    newResults.push(bestOpt);
                 }
-                setResults(newResults);
             };
 
             return (
-                <div class="flex flex-col h-screen overflow-hidden">
-                    <div class="relative flex-1 bg-black">
-                        <video ref={videoRef} autoPlay playsInline class="w-full h-full object-cover" />
-                        <canvas ref={canvasRef} class="absolute top-0 left-0 w-full h-full object-cover" />
-                        
-                        {/* Painel de Controle Flutuante */}
-                        <div class="absolute bottom-4 left-4 right-4 bg-white/10 backdrop-blur-md p-4 rounded-2xl border border-white/20">
-                            <div class="grid grid-cols-2 gap-4 mb-4">
+                <div class="flex flex-col h-screen">
+                    {/* Área da Câmera */}
+                    <div class="relative flex-1 bg-black overflow-hidden">
+                        <video ref={videoRef} autoPlay playsInline class="absolute w-full h-full object-contain" />
+                        <canvas ref={canvasRef} class="absolute w-full h-full object-contain" />
+                    </div>
+
+                    {/* Painel de Calibração */}
+                    <div class="bg-gray-800 p-6 border-t border-gray-700 shadow-2xl">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                            <div class="space-y-4">
                                 <div>
-                                    <label class="text-[10px] block text-gray-400">POSIÇÃO INICIAL (X/Y)</label>
-                                    <div class="flex gap-2">
-                                        <input type="range" min="0" max="500" value={config.startX} onChange={e => setConfig({...config, startX: parseInt(e.target.value)})} class="w-full h-1" />
-                                        <input type="range" min="0" max="500" value={config.startY} onChange={e => setConfig({...config, startY: parseInt(e.target.value)})} class="w-full h-1" />
-                                    </div>
+                                    <label class="flex justify-between text-xs font-bold text-blue-400 mb-1">
+                                        EIXO X INICIAL (startX): <span>{coords.startX}px</span>
+                                    </label>
+                                    <input type="range" min="0" max="1000" value={coords.startX} 
+                                        onChange={e => setCoords({...coords, startX: parseInt(e.target.value)})} class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer" />
                                 </div>
                                 <div>
-                                    <label class="text-[10px] block text-gray-400">ESPAÇAMENTO (X/Y)</label>
-                                    <div class="flex gap-2">
-                                        <input type="range" min="10" max="100" value={config.gapX} onChange={e => setConfig({...config, gapX: parseInt(e.target.value)})} class="w-full h-1" />
-                                        <input type="range" min="10" max="100" value={config.gapY} onChange={e => setConfig({...config, gapY: parseInt(e.target.value)})} class="w-full h-1" />
-                                    </div>
+                                    <label class="flex justify-between text-xs font-bold text-blue-400 mb-1">
+                                        EIXO Y INICIAL (startY): <span>{coords.startY}px</span>
+                                    </label>
+                                    <input type="range" min="0" max="1000" value={coords.startY} 
+                                        onChange={e => setCoords({...coords, startY: parseInt(e.target.value)})} class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer" />
                                 </div>
                             </div>
-                            
-                            <div class="flex overflow-x-auto gap-2 py-2">
-                                {results.map((res, i) => (
-                                    <div key={i} class={`min-w-[40px] h-10 flex items-center justify-center rounded-lg font-bold border ${res ? 'bg-green-600 border-green-400' : 'bg-white/5 border-white/20 text-gray-500'}`}>
-                                        {res || '?'}
-                                    </div>
-                                ))}
+
+                            <div class="space-y-4">
+                                <div>
+                                    <label class="flex justify-between text-xs font-bold text-green-400 mb-1">
+                                        DISTÂNCIA ENTRE A-B-C (gapX): <span>{coords.gapX}px</span>
+                                    </label>
+                                    <input type="range" min="10" max="200" value={coords.gapX} 
+                                        onChange={e => setCoords({...coords, gapX: parseInt(e.target.value)})} class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer" />
+                                </div>
+                                <div>
+                                    <label class="flex justify-between text-xs font-bold text-green-400 mb-1">
+                                        DISTÂNCIA ENTRE QUESTÕES (gapY): <span>{coords.gapY}px</span>
+                                    </label>
+                                    <input type="range" min="10" max="200" value={coords.gapY} 
+                                        onChange={e => setCoords({...coords, gapY: parseInt(e.target.value)})} class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer" />
+                                </div>
                             </div>
+                        </div>
+
+                        {/* Bloco de Código para Copiar */}
+                        <div class="bg-black p-4 rounded-lg border border-gray-600 font-mono text-sm">
+                            <p class="text-gray-500 mb-2">// Copie estes valores para o seu código principal:</p>
+                            <p class="text-yellow-400 italic">
+                                const startX = {coords.startX};<br/>
+                                const startY = {coords.startY};<br/>
+                                const gapX = {coords.gapX};<br/>
+                                const gapY = {coords.gapY};
+                            </p>
                         </div>
                     </div>
                 </div>
