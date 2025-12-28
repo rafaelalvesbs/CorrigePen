@@ -1,187 +1,175 @@
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
-  <meta charset="UTF-8" />
-  <title>CorrigePen – Leitor de Gabarito</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
-  <!-- React -->
-  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-
-  <!-- Tailwind -->
-  <script src="https://cdn.tailwindcss.com"></script>
+    <meta charset="UTF-8" />
+    <title>CorrigePen PRO – Leitor Confiável</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
 </head>
+<body class="bg-slate-950 text-white overflow-hidden">
+    <div id="root"></div>
 
-<body class="bg-slate-900 text-white">
-  <div id="root"></div>
+    <script type="module" type="text/babel">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js";
+        import { getDatabase, ref, get } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-database.js";
 
-  <script type="text/babel">
-    const { useEffect, useRef, useState } = React;
+        const { useEffect, useRef, useState } = React;
 
-    /* ================= CONFIGURAÇÃO OMR ================= */
-    const CONFIG = {
-      startX: 315,
-      startY: 340,
-      gapX: 84,
-      gapY: 69,
-      size: 25,
-      threshold: 38000
-    };
+        const firebaseConfig = {
+            apiKey: "AIzaSyCZ77ugK5a3pw-U0NH43F2x1bu09sS5pJg",
+            authDomain: "correcao-de-provas-f315d.firebaseapp.com",
+            projectId: "correcao-de-provas-f315d",
+            databaseURL: "https://correcao-de-provas-f315d-default-rtdb.firebaseio.com",
+        };
 
-    const GABARITO = ['A','B','C','A','B','C','A','B','C','A'];
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
 
-    /* ================= APP ================= */
-    function App() {
-      const videoRef = useRef(null);
-      const canvasRef = useRef(null);
-      const scanFn = useRef(null);
+        const CONFIG = { startX: 315, startY: 340, gapX: 84, gapY: 69, size: 28, threshold: 40000 };
 
-      const [scanAtual, setScanAtual] = useState([]);
-      const [historico, setHistorico] = useState([]);
+        function App() {
+            const videoRef = useRef(null);
+            const canvasRef = useRef(null);
+            const [gabaritoReal, setGabaritoReal] = useState(null);
+            const [scanAtual, setScanAtual] = useState([]);
+            const [historico, setHistorico] = useState([]);
+            const [isLocked, setIsLocked] = useState(false); // Estado para congelar a imagem
 
-      /* ===== CAMERA ===== */
-      useEffect(() => {
-        navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "environment", width: 1280, height: 720 }
-        }).then(stream => {
-          videoRef.current.srcObject = stream;
-        });
-      }, []);
+            useEffect(() => {
+                const params = new URLSearchParams(window.location.search);
+                const provaId = params.get("provaId");
+                if (provaId) {
+                    get(ref(db, `provas/${provaId}`)).then(s => {
+                        if (s.exists()) setGabaritoReal(s.val().gabarito || s.val().respostas);
+                    });
+                }
+                
+                navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: "environment", width: 1280, height: 720 } 
+                }).then(stream => videoRef.current.srcObject = stream);
+            }, []);
 
-      /* ===== SCANNER ===== */
-      scanFn.current = () => {
-        const video = videoRef.current;
-        const canvas = canvasRef.current;
-        if (!video || !canvas || video.videoWidth === 0) return;
+            const executarOMR = () => {
+                const video = videoRef.current;
+                const canvas = canvasRef.current;
+                const ctx = canvas.getContext("2d", { willReadFrequently: true });
+                
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                ctx.drawImage(video, 0, 0);
 
-        const ctx = canvas.getContext("2d", { willReadFrequently: true });
+                const resultados = [];
+                for (let q = 0; q < 10; q++) {
+                    let marcada = null;
+                    let maiorEscuro = 0;
+                    let coordsEleita = null;
 
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
+                    ['A','B','C'].forEach((opt, i) => {
+                        const x = CONFIG.startX + i * CONFIG.gapX;
+                        const y = CONFIG.startY + q * CONFIG.gapY;
+                        const pixels = ctx.getImageData(x, y, CONFIG.size, CONFIG.size).data;
+                        let escuro = 0;
+                        for (let p = 0; p < pixels.length; p += 4) {
+                            escuro += 255 - (pixels[p] + pixels[p+1] + pixels[p+2]) / 3;
+                        }
 
-        ctx.drawImage(video, 0, 0);
+                        if (escuro > CONFIG.threshold && escuro > maiorEscuro) {
+                            maiorEscuro = escuro;
+                            marcada = opt;
+                            coordsEleita = { x, y };
+                        }
+                    });
 
-        const respostas = [];
+                    // Feedback Visual de Certeza: Desenha um círculo verde sólido na opção escolhida
+                    if (marcada && coordsEleita) {
+                        ctx.fillStyle = "rgba(0, 255, 0, 0.5)";
+                        ctx.beginPath();
+                        ctx.arc(coordsEleita.x + CONFIG.size/2, coordsEleita.y + CONFIG.size/2, CONFIG.size, 0, Math.PI*2);
+                        ctx.fill();
+                        ctx.strokeStyle = "#00FF00";
+                        ctx.lineWidth = 4;
+                        ctx.stroke();
+                    }
+                    resultados.push(marcada);
+                }
+                setScanAtual(resultados);
+            };
 
-        for (let q = 0; q < 10; q++) {
-          let marcada = null;
-          let maiorEscuro = 0;
+            // Loop de preview (roda apenas se não estiver travado)
+            useEffect(() => {
+                const interval = setInterval(() => {
+                    if (!isLocked) executarOMR();
+                }, 150);
+                return () => clearInterval(interval);
+            }, [isLocked]);
 
-          ['A','B','C'].forEach((opt, i) => {
-            const x = CONFIG.startX + i * CONFIG.gapX;
-            const y = CONFIG.startY + q * CONFIG.gapY;
+            const bip = (f) => {
+                const audio = new (window.AudioContext || window.webkitAudioContext)();
+                const osc = audio.createOscillator();
+                const g = audio.createGain();
+                osc.connect(g); g.connect(audio.destination);
+                osc.frequency.value = f; g.gain.value = 0.1;
+                osc.start(); osc.stop(audio.currentTime + 0.1);
+            };
 
-            const img = ctx.getImageData(x, y, CONFIG.size, CONFIG.size).data;
-            let escuro = 0;
+            const salvar = () => {
+                if (!gabaritoReal) return alert("Aguardando gabarito do Firebase...");
+                const acertos = scanAtual.reduce((acc, r, i) => r === gabaritoReal[i] ? acc + 1 : acc, 0);
+                setHistorico([{ id: Date.now(), acertos, nota: (acertos / gabaritoReal.length * 10).toFixed(1) }, ...historico]);
+                setIsLocked(false);
+                bip(880);
+            };
 
-            for (let p = 0; p < img.length; p += 4) {
-              escuro += 255 - (img[p] + img[p+1] + img[p+2]) / 3;
-            }
+            return (
+                <div className="flex flex-col h-screen overflow-hidden">
+                    {/* CAMERA AREA */}
+                    <div className="relative flex-1 bg-black">
+                        <video ref={videoRef} autoPlay playsInline className={`w-full h-full object-cover ${isLocked ? 'opacity-40' : ''}`} />
+                        <canvas ref={canvasRef} className="absolute top-0 left-0 w-full h-full object-cover" />
+                        
+                        {/* Guia Lateral de Leitura */}
+                        {isLocked && (
+                            <div className="absolute right-4 top-10 bg-black/80 border border-green-500 p-3 rounded-xl font-mono text-xs">
+                                <h3 className="text-green-400 font-bold mb-2 underline text-center">LIDO:</h3>
+                                {scanAtual.map((r, i) => (
+                                    <div key={i} className="flex justify-between w-20 border-b border-white/10 py-1">
+                                        <span className="text-gray-500">{i+1}:</span>
+                                        <span className={r ? "text-white font-bold" : "text-red-500"}>{r || "?"}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
 
-            if (escuro > CONFIG.threshold && escuro > maiorEscuro) {
-              maiorEscuro = escuro;
-              marcada = opt;
-            }
-
-            ctx.strokeStyle = escuro > CONFIG.threshold ? "#00ff00" : "#ff0000";
-            ctx.lineWidth = 2;
-            ctx.strokeRect(x, y, CONFIG.size, CONFIG.size);
-          });
-
-          respostas.push(marcada);
+                    {/* FOOTER CONTROLS */}
+                    <div className="bg-slate-900 border-t border-slate-700 p-4 pb-8 shadow-2xl">
+                        {!isLocked ? (
+                            <button onClick={() => { setIsLocked(true); bip(440); }} className="w-full bg-blue-600 py-6 rounded-2xl text-xl font-black uppercase tracking-widest shadow-lg active:scale-95 transition-all">
+                                📷 Capturar Prova
+                            </button>
+                        ) : (
+                            <div className="flex gap-4">
+                                <button onClick={() => setIsLocked(false)} className="flex-1 bg-slate-700 py-6 rounded-2xl font-bold uppercase text-sm">Voltar</button>
+                                <button onClick={salvar} className="flex-[2] bg-green-600 py-6 rounded-2xl text-xl font-black uppercase shadow-lg shadow-green-900/20">Confirmar Nota</button>
+                            </div>
+                        )}
+                        <div className="flex gap-2 mt-4 overflow-x-auto h-12">
+                            {historico.map(h => (
+                                <div key={h.id} className="bg-slate-800 px-3 py-1 rounded border-b-2 border-green-500 min-w-[60px] text-center">
+                                    <span className="text-[10px] block text-gray-500 leading-none">NOTA</span>
+                                    <span className="text-lg font-bold text-green-400">{h.nota}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            );
         }
 
-        setScanAtual(respostas);
-      };
-
-      /* ===== LOOP ===== */
-      useEffect(() => {
-        const timer = setInterval(() => {
-          scanFn.current();
-        }, 180);
-        return () => clearInterval(timer);
-      }, []);
-
-      /* ===== SALVAR ===== */
-      const salvar = () => {
-        const acertos = scanAtual.reduce(
-          (acc, r, i) => r === GABARITO[i] ? acc + 1 : acc,
-          0
-        );
-
-        setHistorico([
-          {
-            id: Date.now(),
-            acertos,
-            nota: ((acertos / GABARITO.length) * 10).toFixed(1),
-            hora: new Date().toLocaleTimeString()
-          },
-          ...historico
-        ]);
-      };
-
-      /* ================= UI ================= */
-      return (
-        <div className="flex flex-col lg:flex-row h-screen">
-
-          {/* CAMERA */}
-          <div className="relative flex-[2] bg-black">
-            <video
-              ref={videoRef}
-              autoPlay
-              playsInline
-              className="w-full h-full"
-            />
-            <canvas
-              ref={canvasRef}
-              className="absolute top-0 left-0 pointer-events-none opacity-70"
-            />
-            <div className="absolute top-3 left-3 bg-black/60 px-3 py-1 rounded text-xs">
-              Scanner ativo – 10 questões (ABC)
-            </div>
-          </div>
-
-          {/* RESULTADOS */}
-          <div className="flex-1 bg-slate-800 p-6 overflow-y-auto border-l border-slate-700">
-            <h2 className="text-xl font-bold mb-4">Resultados</h2>
-
-            <button
-              onClick={salvar}
-              className="w-full bg-green-600 hover:bg-green-500 py-4 rounded-xl font-bold mb-6"
-            >
-              CONFIRMAR E SALVAR NOTA
-            </button>
-
-            {historico.length === 0 && (
-              <p className="text-slate-400 text-center">
-                Nenhuma leitura salva ainda
-              </p>
-            )}
-
-            <div className="space-y-3">
-              {historico.map(item => (
-                <div
-                  key={item.id}
-                  className="bg-slate-700 p-3 rounded-lg flex justify-between items-center border-l-4 border-green-500"
-                >
-                  <div>
-                    <p className="text-xs text-slate-400">{item.hora}</p>
-                    <p className="font-bold">{item.acertos} acertos</p>
-                  </div>
-                  <div className="text-2xl font-black text-green-400">
-                    {item.nota}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
-  </script>
+        ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+    </script>
 </body>
 </html>
