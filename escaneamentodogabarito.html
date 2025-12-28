@@ -2,129 +2,160 @@
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Calibrador de Coordenadas OMR</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Scanner Pedagógico Pro</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-gray-900 text-white">
+<body class="bg-slate-950 text-white overflow-hidden">
     <div id="root"></div>
 
     <script type="text/babel">
         const { useState, useRef, useEffect } = React;
 
+        const CONFIG = {
+            startX: 315, startY: 340, gapX: 84, gapY: 69,
+            size: 25, threshold: 40000
+        };
+
+        const GABARITO_OFICIAL = ['A', 'B', 'C', 'A', 'B', 'C', 'A', 'B', 'C', 'A'];
+
         function App() {
             const videoRef = useRef(null);
             const canvasRef = useRef(null);
-            
-            // Estado das coordenadas que você vai copiar
-            const [coords, setCoords] = useState({
-                startX: 100,
-                startY: 150,
-                gapX: 60,
-                gapY: 45,
-                size: 20
-            });
+            const [alunoNotas, setAlunoNotas] = useState([]);
+            const [currentScan, setCurrentScan] = useState(null);
+            const [isLocked, setIsLocked] = useState(false); // Trava a imagem para confirmação
+
+            // Efeito Sonoro
+            const playBeep = (freq = 440, duration = 0.1) => {
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = audioCtx.createOscillator();
+                const gainNode = audioCtx.createGain();
+                oscillator.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+                oscillator.frequency.value = freq;
+                gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                oscillator.start();
+                oscillator.stop(audioCtx.currentTime + duration);
+            };
 
             useEffect(() => {
                 navigator.mediaDevices.getUserMedia({ 
-                    video: { facingMode: "environment", width: { ideal: 1280 } } 
+                    video: { facingMode: "environment", width: 1280, height: 720 } 
                 }).then(stream => videoRef.current.srcObject = stream);
                 
-                const render = () => {
-                    drawGrid();
-                    requestAnimationFrame(render);
-                };
-                render();
-            }, [coords]);
+                const timer = setInterval(() => {
+                    if (!isLocked) scannerLogic();
+                }, 100);
+                return () => clearInterval(timer);
+            }, [isLocked]);
 
-            const drawGrid = () => {
+            const scannerLogic = () => {
                 if (!videoRef.current || !canvasRef.current) return;
-                const ctx = canvasRef.current.getContext('2d');
+                const ctx = canvasRef.current.getContext('2d', { willReadFrequently: true });
                 canvasRef.current.width = videoRef.current.videoWidth;
                 canvasRef.current.height = videoRef.current.videoHeight;
-                
                 ctx.drawImage(videoRef.current, 0, 0);
 
-                // Desenha a grade de 10x3 (A, B, C)
-                ctx.lineWidth = 2;
+                const detected = [];
                 for (let q = 0; q < 10; q++) {
+                    let marked = null;
+                    let maxDark = 0;
                     ['A', 'B', 'C'].forEach((opt, i) => {
-                        const x = coords.startX + (i * coords.gapX);
-                        const y = coords.startY + (q * coords.gapY);
-                        
-                        // Desenha o quadrado de detecção
-                        ctx.strokeStyle = "#00FF00";
-                        ctx.strokeRect(x, y, coords.size, coords.size);
-                        
-                        // Desenha a legenda da coordenada apenas no primeiro e último
-                        if(q === 0 || q === 9) {
-                            ctx.fillStyle = "#00FF00";
-                            ctx.font = "10px Monospace";
-                            ctx.fillText(`${opt}${q+1}`, x, y - 5);
+                        const x = CONFIG.startX + (i * CONFIG.gapX);
+                        const y = CONFIG.startY + (q * CONFIG.gapY);
+                        const data = ctx.getImageData(x, y, CONFIG.size, CONFIG.size).data;
+                        let dark = 0;
+                        for (let p = 0; p < data.length; p += 4) {
+                            dark += (255 - (data[p] + data[p+1] + data[p+2]) / 3);
                         }
+                        if (dark > CONFIG.threshold && dark > maxDark) {
+                            maxDark = dark;
+                            marked = opt;
+                        }
+                        // Feedback visual em tempo real
+                        ctx.strokeStyle = dark > CONFIG.threshold ? "#00ff00" : "rgba(255,255,255,0.3)";
+                        ctx.lineWidth = 3;
+                        ctx.strokeRect(x, y, CONFIG.size, CONFIG.size);
                     });
+                    detected.push(marked);
                 }
+                setCurrentScan(detected);
+            };
+
+            const handleLock = () => {
+                setIsLocked(true);
+                playBeep(660, 0.05); // Bip curto de captura
+            };
+
+            const handleConfirm = () => {
+                const acertos = currentScan.reduce((acc, res, i) => res === GABARITO_OFICIAL[i] ? acc + 1 : acc, 0);
+                const novaNota = {
+                    id: alunoNotas.length + 1,
+                    acertos,
+                    nota: (acertos / 10 * 10).toFixed(1),
+                    respostas: [...currentScan]
+                };
+                setAlunoNotas([novaNota, ...alunoNotas]);
+                setIsLocked(false);
+                playBeep(880, 0.15); // Bip de sucesso
             };
 
             return (
                 <div class="flex flex-col h-screen">
-                    {/* Área da Câmera */}
+                    {/* VIEWPORT DA CÂMERA */}
                     <div class="relative flex-1 bg-black overflow-hidden">
-                        <video ref={videoRef} autoPlay playsInline class="absolute w-full h-full object-contain" />
-                        <canvas ref={canvasRef} class="absolute w-full h-full object-contain" />
+                        <video ref={videoRef} autoPlay playsInline class={`w-full h-full object-cover transition-opacity ${isLocked ? 'opacity-50' : 'opacity-100'}`} />
+                        <canvas ref={canvasRef} class="absolute top-0 left-0 w-full h-full object-cover" />
+                        
+                        {isLocked && (
+                            <div class="absolute inset-0 flex items-center justify-center bg-green-500/10 pointer-events-none">
+                                <div class="bg-green-600 text-white px-4 py-1 rounded-full text-sm font-bold animate-pulse">
+                                    CONFERIR MARCAÇÕES EM VERDE
+                                </div>
+                            </div>
+                        )}
                     </div>
 
-                    {/* Painel de Calibração */}
-                    <div class="bg-gray-800 p-6 border-t border-gray-700 shadow-2xl">
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                            <div class="space-y-4">
-                                <div>
-                                    <label class="flex justify-between text-xs font-bold text-blue-400 mb-1">
-                                        EIXO X INICIAL (startX): <span>{coords.startX}px</span>
-                                    </label>
-                                    <input type="range" min="0" max="1000" value={coords.startX} 
-                                        onChange={e => setCoords({...coords, startX: parseInt(e.target.value)})} class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer" />
-                                </div>
-                                <div>
-                                    <label class="flex justify-between text-xs font-bold text-blue-400 mb-1">
-                                        EIXO Y INICIAL (startY): <span>{coords.startY}px</span>
-                                    </label>
-                                    <input type="range" min="0" max="1000" value={coords.startY} 
-                                        onChange={e => setCoords({...coords, startY: parseInt(e.target.value)})} class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer" />
-                                </div>
+                    {/* HISTÓRICO LATERAL (Desktop) / TOPO (Mobile) */}
+                    <div class="h-32 bg-slate-900 border-t border-slate-700 flex items-center px-4 gap-4 overflow-x-auto">
+                        {alunoNotas.length === 0 && <p class="text-slate-500 text-sm italic">Nenhuma nota salva...</p>}
+                        {alunoNotas.map(n => (
+                            <div key={n.id} class="bg-slate-800 border-l-4 border-green-500 p-2 rounded min-w-[100px]">
+                                <p class="text-[10px] text-gray-400">ALUNO #{n.id}</p>
+                                <p class="text-xl font-black text-green-400">{n.nota}</p>
                             </div>
+                        ))}
+                    </div>
 
-                            <div class="space-y-4">
-                                <div>
-                                    <label class="flex justify-between text-xs font-bold text-green-400 mb-1">
-                                        DISTÂNCIA ENTRE A-B-C (gapX): <span>{coords.gapX}px</span>
-                                    </label>
-                                    <input type="range" min="10" max="200" value={coords.gapX} 
-                                        onChange={e => setCoords({...coords, gapX: parseInt(e.target.value)})} class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer" />
-                                </div>
-                                <div>
-                                    <label class="flex justify-between text-xs font-bold text-green-400 mb-1">
-                                        DISTÂNCIA ENTRE QUESTÕES (gapY): <span>{coords.gapY}px</span>
-                                    </label>
-                                    <input type="range" min="10" max="200" value={coords.gapY} 
-                                        onChange={e => setCoords({...coords, gapY: parseInt(e.target.value)})} class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer" />
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Bloco de Código para Copiar */}
-                        <div class="bg-black p-4 rounded-lg border border-gray-600 font-mono text-sm">
-                            <p class="text-gray-500 mb-2">// Copie estes valores para o seu código principal:</p>
-                            <p class="text-yellow-400 italic">
-                                const startX = {coords.startX};<br/>
-                                const startY = {coords.startY};<br/>
-                                const gapX = {coords.gapX};<br/>
-                                const gapY = {coords.gapY};
-                            </p>
-                        </div>
+                    {/* BARRA DE BOTÕES FIXA INFERIOR */}
+                    <div class="bg-slate-900 p-4 pb-8 border-t border-slate-700 flex gap-4">
+                        {!isLocked ? (
+                            <button 
+                                onClick={handleLock}
+                                class="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-black py-5 rounded-2xl shadow-xl active:scale-95 transition-all text-xl uppercase tracking-wider"
+                            >
+                                📷 Escanear Gabarito
+                            </button>
+                        ) : (
+                            <>
+                                <button 
+                                    onClick={() => setIsLocked(false)}
+                                    class="flex-[1] bg-slate-700 hover:bg-slate-600 text-white font-bold py-5 rounded-2xl active:scale-95 transition-all uppercase"
+                                >
+                                    Voltar
+                                </button>
+                                <button 
+                                    onClick={handleConfirm}
+                                    class="flex-[2] bg-green-600 hover:bg-green-500 text-white font-black py-5 rounded-2xl shadow-xl active:scale-95 transition-all text-xl uppercase tracking-wider"
+                                >
+                                    Confirmar e Salvar
+                                </button>
+                            </>
+                        )}
                     </div>
                 </div>
             );
