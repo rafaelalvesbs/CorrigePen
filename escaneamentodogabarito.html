@@ -34,10 +34,12 @@ function App() {
   const [locked, setLocked] = useState(false);
   const [error, setError] = useState(null);
   
-  const [gabarito, setGabarito] = useState(null); 
+  // Estado para armazenar o gabarito vindo do Firebase
+  const [gabarito, setGabarito] = useState([]); 
   const [notaFinal, setNotaFinal] = useState(0);
 
   useEffect(() => {
+    // Inicialização do Firebase
     const firebaseConfig = {
       apiKey: "AIzaSyCZ77ugK5a3pw-U0NH43F2x1bu09sS5pJg",
       authDomain: "correcao-de-provas-f315d.firebaseapp.com",
@@ -49,20 +51,24 @@ function App() {
       firebase.initializeApp(firebaseConfig);
     }
 
+    // Pega o provaId da URL (enviado pelo leitor de QR Code)
     const params = new URLSearchParams(window.location.search);
     const provaId = params.get("provaId");
 
     if (provaId) {
       firebase.database().ref(`gabaritos/${provaId}`).once('value').then(snapshot => {
-        if (snapshot.exists()) {
-          const data = snapshot.val();
-          // CONSERTO: Transforma o objeto {1:"A", 2:"B"} em um array ["A", "B"]
-          const formatado = Object.keys(data)
-            .sort((a, b) => parseInt(a) - parseInt(b))
-            .map(key => data[key]);
-          setGabarito(formatado);
-        }
-      });
+  if (snapshot.exists()) {
+    const obj = snapshot.val();
+
+    // transforma { "1":"A", "2":"B" } em ["A","B"]
+    const arr = Object.keys(obj)
+      .sort((a,b)=>Number(a)-Number(b))
+      .map(k => obj[k]);
+
+    setGabarito(arr);
+  }
+});
+
     }
 
     navigator.mediaDevices.getUserMedia({
@@ -73,13 +79,14 @@ function App() {
   }, []);
 
   const salvarNotaAutomatica = (leiturasFinais) => {
-    if (!gabarito || gabarito.length === 0) return;
+    if (gabarito.length === 0) return;
 
+    // Bloqueia o scanner imediatamente para não repetir o processo
     setLocked(true);
 
+    // Aguarda 2 segundos antes de mostrar o resultado na tela
     setTimeout(() => {
       let acertos = 0;
-      // Compara a leitura (0-9) com o gabarito formatado (0-9)
       leiturasFinais.forEach((resp, i) => {
         if (resp === gabarito[i]) acertos++;
       });
@@ -160,30 +167,22 @@ function App() {
 
         {!locked && (
             <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-blue-600/80 px-4 py-2 rounded-full text-xs font-bold uppercase tracking-widest border border-white/20 whitespace-nowrap">
-                {gabarito ? `Questões: ${scanAtual.filter(r => r !== null).length}/10` : "Carregando Gabarito..."}
+                {gabarito.length > 0 ? `Questões: ${scanAtual.filter(r => r !== null).length}/10` : "Carregando Gabarito..."}
             </div>
         )}
 
-        {locked && (
+        {/* Só mostra o modal se locked for true E a nota já tiver sido calculada após o delay */}
+        {locked && notaFinal > 0 && (
           <div className="absolute inset-0 flex items-center justify-center p-6 bg-black/60">
             <div className="bg-slate-900 border-2 border-green-500 p-8 rounded-3xl shadow-2xl text-center w-full max-w-xs animate-bounce-short">
-              {notaFinal > 0 ? (
-                <>
-                  <p className="text-green-400 font-bold text-sm uppercase tracking-widest mb-2">Correção Concluída</p>
-                  <h2 className="text-6xl font-black text-white mb-6">{notaFinal}</h2>
-                  <button 
-                    onClick={() => window.location.href = 'escaneamentodoqrcode.html'}
-                    className="w-full bg-green-600 hover:bg-green-500 text-white font-black py-4 rounded-2xl shadow-lg transition-transform active:scale-95"
-                  >
-                    PRÓXIMO ALUNO
-                  </button>
-                </>
-              ) : (
-                <div className="py-8">
-                  <div className="w-12 h-12 border-4 border-green-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                  <p className="text-white font-bold animate-pulse">PROCESSANDO NOTA...</p>
-                </div>
-              )}
+              <p className="text-green-400 font-bold text-sm uppercase tracking-widest mb-2">Correção Concluída</p>
+              <h2 className="text-6xl font-black text-white mb-6">{notaFinal}</h2>
+              <button 
+                onClick={() => window.location.href = 'escaneamentodoqrcode.html'}
+                className="w-full bg-green-600 hover:bg-green-500 text-white font-black py-4 rounded-2xl shadow-lg transition-transform active:scale-95"
+              >
+                PRÓXIMO ALUNO
+              </button>
             </div>
           </div>
         )}
@@ -191,7 +190,7 @@ function App() {
 
       <div className="p-6 bg-slate-900 flex gap-4 pb-10">
         <div className="w-full text-center py-4 text-slate-400 text-sm font-medium animate-pulse">
-            {locked ? (notaFinal > 0 ? "Nota Registrada!" : "Aguarde...") : "Alinhe a câmera para capturar automaticamente"}
+            {locked ? (notaFinal > 0 ? "Nota Registrada!" : "Processando...") : "Alinhe a câmera para capturar automaticamente"}
         </div>
       </div>
     </div>
