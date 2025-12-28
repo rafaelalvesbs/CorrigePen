@@ -76,17 +76,20 @@ function App() {
   const salvarNotaAutomatica = (leiturasFinais) => {
     if (gabarito.length === 0) return;
 
-    // Cálculo da nota comparando com o gabarito do Firebase
-    let acertos = 0;
-    leiturasFinais.forEach((resp, i) => {
-      if (resp === gabarito[i]) acertos++;
-    });
-    
-    // MUDANÇA SOLICITADA: Cada acerto vale 2 pontos (10 acertos = 20 pontos)
-    const calculo = acertos * 2;
-    setNotaFinal(calculo.toFixed(1));
-    setScanAtual(leiturasFinais);
-    setLocked(true); 
+    // Bloqueia o scanner imediatamente para não repetir o processo
+    setLocked(true);
+
+    // Aguarda 2 segundos antes de mostrar o resultado na tela
+    setTimeout(() => {
+      let acertos = 0;
+      leiturasFinais.forEach((resp, i) => {
+        if (resp === gabarito[i]) acertos++;
+      });
+      
+      const calculo = acertos * 2;
+      setNotaFinal(calculo.toFixed(1));
+      setScanAtual(leiturasFinais);
+    }, 2000); 
   };
 
   const processarFrame = () => {
@@ -163,7 +166,8 @@ function App() {
             </div>
         )}
 
-        {locked && (
+        {/* Só mostra o modal se locked for true E a nota já tiver sido calculada após o delay */}
+        {locked && notaFinal > 0 && (
           <div className="absolute inset-0 flex items-center justify-center p-6 bg-black/60">
             <div className="bg-slate-900 border-2 border-green-500 p-8 rounded-3xl shadow-2xl text-center w-full max-w-xs animate-bounce-short">
               <p className="text-green-400 font-bold text-sm uppercase tracking-widest mb-2">Correção Concluída</p>
@@ -181,7 +185,7 @@ function App() {
 
       <div className="p-6 bg-slate-900 flex gap-4 pb-10">
         <div className="w-full text-center py-4 text-slate-400 text-sm font-medium animate-pulse">
-            {locked ? "Nota Registrada!" : "Alinhe a câmera para capturar automaticamente"}
+            {locked ? (notaFinal > 0 ? "Nota Registrada!" : "Processando...") : "Alinhe a câmera para capturar automaticamente"}
         </div>
       </div>
     </div>
