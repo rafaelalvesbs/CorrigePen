@@ -17,10 +17,10 @@ const { useEffect, useRef, useState } = React;
 
 /* ================= CONFIG ATUALIZADA ================= */
 const CONFIG = {
-  startX: 377, // Atualizado
-  startY: 351, // Atualizado
-  gapX: 93,    // Atualizado
-  gapY: 76,    // Atualizado
+  startX: 377, 
+  startY: 351, 
+  gapX: 93,    
+  gapY: 76,    
   size: 30,    
   threshold: 35000 
 };
@@ -31,6 +31,10 @@ function App() {
   const [scanAtual, setScanAtual] = useState([]);
   const [locked, setLocked] = useState(false);
   const [error, setError] = useState(null);
+  
+  // Estado para armazenar o gabarito vindo do Firebase
+  const [gabarito, setGabarito] = useState(['A','B','C','A','B','C','A','B','C','A']); // Exemplo padrão
+  const [notaFinal, setNotaFinal] = useState(0);
 
   useEffect(() => {
     navigator.mediaDevices.getUserMedia({
@@ -38,16 +42,24 @@ function App() {
     }).then(stream => {
       videoRef.current.srcObject = stream;
     }).catch(() => setError("Erro ao acessar a câmera"));
+
+    // AQUI VOCÊ PODE BUSCAR O GABARITO DO FIREBASE SE DESEJAR
+    // db.ref('gabarito').once('value').then(snapshot => setGabarito(snapshot.val()));
   }, []);
 
   const salvarNotaAutomatica = (leiturasFinais) => {
-    setLocked(true); 
-    setScanAtual(leiturasFinais);
+    // Cálculo da nota comparando com o gabarito
+    let acertos = 0;
+    leiturasFinais.forEach((resp, i) => {
+      if (resp === gabarito[i]) acertos++;
+    });
     
-    setTimeout(() => {
-        alert("Nota Salva Automaticamente!");
-        setLocked(false);
-    }, 500);
+    const calculo = (acertos / gabarito.length) * 10;
+    setNotaFinal(calculo.toFixed(1));
+    setScanAtual(leiturasFinais);
+    setLocked(true); 
+
+    // Opcional: Salvar nota no Firebase aqui
   };
 
   const processarFrame = () => {
@@ -130,15 +142,16 @@ function App() {
         )}
 
         {locked && (
-          <div className="absolute left-4 top-4 bg-black/90 border border-green-500 p-4 rounded-xl shadow-2xl">
-            <p className="text-green-400 font-bold mb-2 text-sm uppercase tracking-widest">Leitura Concluída!</p>
-            <div className="grid grid-cols-2 gap-x-6 gap-y-1 font-mono text-sm">
-              {scanAtual.map((r,i)=>(
-                <div key={i} className="flex justify-between border-b border-white/10 w-24">
-                  <span className="text-gray-500">{i+1}:</span>
-                  <span className="text-white font-bold">{r}</span>
-                </div>
-              ))}
+          <div className="absolute inset-0 flex items-center justify-center p-6 bg-black/60">
+            <div className="bg-slate-900 border-2 border-green-500 p-8 rounded-3xl shadow-2xl text-center w-full max-w-xs animate-bounce-short">
+              <p className="text-green-400 font-bold text-sm uppercase tracking-widest mb-2">Correção Concluída</p>
+              <h2 className="text-6xl font-black text-white mb-6">{notaFinal}</h2>
+              <button 
+                onClick={() => window.location.href = 'qr.html'}
+                className="w-full bg-green-600 hover:bg-green-500 text-white font-black py-4 rounded-2xl shadow-lg transition-transform active:scale-95"
+              >
+                PRÓXIMO ALUNO
+              </button>
             </div>
           </div>
         )}
@@ -146,7 +159,7 @@ function App() {
 
       <div className="p-6 bg-slate-900 flex gap-4 pb-10">
         <div className="w-full text-center py-4 text-slate-400 text-sm font-medium animate-pulse">
-            {locked ? "Processando..." : "Alinhe a câmera para capturar automaticamente"}
+            {locked ? "Nota Registrada!" : "Alinhe a câmera para capturar automaticamente"}
         </div>
       </div>
     </div>
@@ -156,5 +169,13 @@ function App() {
 const root = ReactDOM.createRoot(document.getElementById("root"));
 root.render(<App />);
 </script>
+
+<style>
+  @keyframes bounce-short {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-10px); }
+  }
+  .animate-bounce-short { animation: bounce-short 0.5s ease-in-out; }
+</style>
 </body>
 </html>
