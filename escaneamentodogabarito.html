@@ -2,63 +2,50 @@
 <html lang="pt-br">
 <head>
   <meta charset="UTF-8" />
-  <title>CorrigePen PRO</title>
+  <title>CorrigePen PRO - Estável</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
-
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
-
 <body class="bg-black text-white overflow-hidden">
 <div id="root"></div>
 
 <script type="text/babel">
 const { useEffect, useRef, useState } = React;
 
-/* ================= CONFIG ================= */
+/* ================= CONFIG ATUALIZADA BASEADA NA FOTO ================= */
 const CONFIG = {
-  startX: 315,
-  startY: 340,
-  gapX: 84,
-  gapY: 69,
-  size: 28,
-  threshold: 38000
+  startX: 318, // Ajustado levemente para a direita
+  startY: 345, // Ajustado levemente para baixo
+  gapX: 86,    
+  gapY: 70,    
+  size: 30,    // Aumentado para cobrir melhor a área
+  threshold: 35000 // Um pouco mais sensível
 };
 
-const GABARITO = ['A','B','C','A','B','C','A','B','C','A'];
-const FRAMES_ESTAVEIS = 5;
-
-/* ================= APP ================= */
 function App() {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
-  const bufferRef = useRef([]);
-
   const [scanAtual, setScanAtual] = useState([]);
   const [locked, setLocked] = useState(false);
   const [error, setError] = useState(null);
 
-  /* ===== CAMERA ===== */
   useEffect(() => {
     navigator.mediaDevices.getUserMedia({
       video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } }
     }).then(stream => {
       videoRef.current.srcObject = stream;
-    }).catch(() => {
-      setError("Erro ao acessar a câmera");
-    });
+    }).catch(() => setError("Erro ao acessar a câmera"));
   }, []);
 
-  /* ===== PROCESSAMENTO ===== */
   const processarFrame = () => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
     if (!video || !canvas || video.readyState < 2) return;
 
     const ctx = canvas.getContext("2d", { willReadFrequently: true });
-
     if (canvas.width !== video.videoWidth) {
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
@@ -68,7 +55,7 @@ function App() {
     const leitura = [];
 
     for (let q = 0; q < 10; q++) {
-      let marcacoes = [];
+      let dadosOpcoes = [];
 
       ['A','B','C'].forEach((opt, i) => {
         const x = CONFIG.startX + i * CONFIG.gapX;
@@ -80,93 +67,83 @@ function App() {
           escuro += 255 - (pixels[p] + pixels[p+1] + pixels[p+2]) / 3;
         }
 
-        ctx.strokeStyle = "rgba(255,255,255,0.25)";
+        // Desenha borda de debug
+        ctx.strokeStyle = "rgba(255,255,255,0.15)";
         ctx.strokeRect(x, y, CONFIG.size, CONFIG.size);
 
-        if (escuro > CONFIG.threshold) {
-          marcacoes.push({ opt, escuro, x, y });
-        }
+        dadosOpcoes.push({ opt, escuro, x, y });
       });
 
-      if (marcacoes.length === 1) {
-        const m = marcacoes[0];
-        ctx.fillStyle = "rgba(0,255,0,0.4)";
+      // Ordena para achar a opção mais escura
+      dadosOpcoes.sort((a, b) => b.escuro - a.escuro);
+      const maisEscura = dadosOpcoes[0];
+      const segundaMaisEscura = dadosOpcoes[1];
+
+      // Lógica de Certeza: A mais escura deve ser maior que o threshold 
+      // E significativamente mais escura que a segunda opção (evita ruído)
+      if (maisEscura.escuro > CONFIG.threshold && maisEscura.escuro > segundaMaisEscura.escuro * 1.5) {
+        ctx.fillStyle = "rgba(0,255,0,0.5)";
         ctx.beginPath();
-        ctx.arc(m.x + CONFIG.size/2, m.y + CONFIG.size/2, CONFIG.size, 0, Math.PI*2);
+        ctx.arc(maisEscura.x + CONFIG.size/2, maisEscura.y + CONFIG.size/2, CONFIG.size * 0.8, 0, Math.PI*2);
         ctx.fill();
-        leitura.push(m.opt);
+        leitura.push(maisEscura.opt);
       } else {
+        // Feedback visual de erro: questão não identificada
+        ctx.strokeStyle = "rgba(255,0,0,0.5)";
+        ctx.lineWidth = 3;
+        ctx.strokeRect(CONFIG.startX - 5, (CONFIG.startY + q * CONFIG.gapY) - 5, (CONFIG.gapX * 2) + CONFIG.size + 10, CONFIG.size + 10);
         leitura.push(null);
       }
     }
-
-    bufferRef.current.push(leitura);
-    if (bufferRef.current.length > FRAMES_ESTAVEIS) {
-      bufferRef.current.shift();
-    }
-
-    const consenso = leitura.map((_, i) => {
-      const votos = bufferRef.current.map(f => f[i]);
-      const contagem = votos.reduce((a,v)=>{
-        a[v] = (a[v]||0)+1;
-        return a;
-      },{});
-      return Object.entries(contagem).sort((a,b)=>b[1]-a[1])[0]?.[0] || null;
-    });
-
-    setScanAtual(consenso);
+    setScanAtual(leitura);
   };
 
   useEffect(() => {
     const timer = setInterval(() => {
       if (!locked) processarFrame();
-    }, 120);
+    }, 150);
     return () => clearInterval(timer);
   }, [locked]);
 
-  if (error) return <div className="p-10 text-red-500 text-center">{error}</div>;
-
   return (
     <div className="flex flex-col h-screen">
-
-      {/* CAMERA */}
       <div className="relative flex-1">
-        <video ref={videoRef} autoPlay playsInline className="absolute w-full h-full object-cover"/>
-        <canvas ref={canvasRef} className="absolute w-full h-full"/>
+        <video ref={videoRef} autoPlay playsInline className={`absolute w-full h-full object-cover ${locked ? 'opacity-40' : ''}`}/>
+        <canvas ref={canvasRef} className="absolute w-full h-full object-cover"/>
 
         {locked && (
-          <div className="absolute left-4 top-4 bg-black/80 border border-green-500 p-3 rounded text-xs font-mono">
-            <p className="text-green-400 font-bold mb-2">REVISÃO</p>
-            {scanAtual.map((r,i)=>(
-              <div key={i}>Q{i+1}: {r || "-"}</div>
-            ))}
+          <div className="absolute left-4 top-4 bg-black/90 border border-green-500 p-4 rounded-xl shadow-2xl">
+            <p className="text-green-400 font-bold mb-2 text-sm uppercase tracking-widest">Revisão de Leitura</p>
+            <div className="grid grid-cols-2 gap-x-6 gap-y-1 font-mono text-sm">
+              {scanAtual.map((r,i)=>(
+                <div key={i} className="flex justify-between border-b border-white/10 w-24">
+                  <span className="text-gray-500">{i+1}:</span>
+                  <span className={r ? "text-white font-bold" : "text-red-500"}>{r || "?"}</span>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </div>
 
-      {/* CONTROLES */}
-      <div className="p-6 bg-slate-900 flex gap-4">
+      <div className="p-6 bg-slate-900 flex gap-4 pb-10">
         {!locked ? (
-          <button onClick={()=>setLocked(true)} className="w-full bg-blue-600 py-6 rounded-2xl text-xl font-black">
-            📷 CAPTURAR
+          <button onClick={()=>setLocked(true)} className="w-full bg-blue-600 py-6 rounded-2xl text-xl font-black shadow-lg active:scale-95 transition-transform">
+            📷 ESCANEAR AGORA
           </button>
         ) : (
           <>
-            <button onClick={()=>setLocked(false)} className="flex-1 bg-slate-700 py-6 rounded-2xl font-bold">
-              Voltar
-            </button>
-            <button onClick={()=>{alert("Leitura confirmada"); setLocked(false);}} className="flex-[2] bg-green-600 py-6 rounded-2xl text-xl font-black">
-              Confirmar
-            </button>
+            <button onClick={()=>setLocked(false)} className="flex-1 bg-slate-700 py-6 rounded-2xl font-bold uppercase text-sm">Voltar</button>
+            <button onClick={()=>{alert("Nota Salva!"); setLocked(false);}} className="flex-[2] bg-green-600 py-6 rounded-2xl text-xl font-black shadow-lg">Confirmar</button>
           </>
         )}
       </div>
-
     </div>
   );
 }
 
-ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(<App />);
 </script>
 </body>
 </html>
