@@ -17,6 +17,10 @@
 <script type="text/babel">
 const { useEffect, useRef, useState } = React;
 
+const somAcerto = new Audio("success.mp3");
+somAcerto.volume = 0.8;
+
+
 /* ================= CONFIG ATUALIZADA ================= */
 const CONFIG = {
   startX: 377, 
@@ -83,6 +87,9 @@ function App() {
 
     // Bloqueia o scanner imediatamente para não repetir o processo
     setLocked(true);
+    somAcerto.currentTime = 0;
+    somAcerto.play();
+
 
     // Aguarda 2 segundos antes de mostrar o resultado na tela
     setTimeout(() => {
