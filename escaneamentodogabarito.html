@@ -63,7 +63,7 @@ function App() {
             oscillator.frequency.setValueAtTime(880, context.currentTime); // Frequência do Bip (Nota A5)
             
             // Aumento do Volume (0.5 é consideravelmente alto)
-            gain.gain.setValueAtTime(0.5, context.currentTime);
+            gain.gain.setValueAtTime(0.10, context.currentTime);
             gain.gain.exponentialRampToValueAtTime(0.01, context.currentTime + 0.2);
             
             oscillator.connect(gain);
@@ -235,3 +235,4 @@ root.render(<App />);
 </script>
 </body>
 </html>
+
