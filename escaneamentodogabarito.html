@@ -125,10 +125,11 @@ function App() {
                     escuro += 255 - (pixels[p] + pixels[p+1] + pixels[p+2]) / 3;
                 }
                 
-                // Desenha UI de detecção
-                ctx.strokeStyle = "rgba(255,255,255,0.3)";
+                // --- ALTERAÇÃO AQUI: Quadradinhos agora são Verdes ---
+                ctx.strokeStyle = "#00ff00"; 
                 ctx.lineWidth = 2;
                 ctx.strokeRect(x, y, CONFIG.size, CONFIG.size);
+                // ---------------------------------------------------
                 
                 dadosOpcoes.push({ opt, escuro, x, y });
             });
