@@ -35,10 +35,10 @@
 const { useEffect, useRef, useState } = React;
 
 const CONFIG = {
-    startX: 377,
-    startY: 351,
-    gapX: 93,
-    gapY: 76,
+    startX: 221,
+    startY: 230,
+    gapX: 111,
+    gapY: 93,
     size: 30,
     threshold: 35000
 };
@@ -58,12 +58,11 @@ function App() {
             const oscillator = context.createOscillator();
             const gain = context.createGain();
             
-            // Tipo 'square' torna o som muito mais nítido e "alto" (estilo bip de caixa)
             oscillator.type = 'square'; 
-            oscillator.frequency.setValueAtTime(880, context.currentTime); // Frequência do Bip (Nota A5)
+            oscillator.frequency.setValueAtTime(880, context.currentTime); 
             
-            // Aumento do Volume (0.5 é consideravelmente alto)
-            gain.gain.setValueAtTime(0.10, context.currentTime);
+            // Volume ajustado para 2.0
+            gain.gain.setValueAtTime(2.0, context.currentTime);
             gain.gain.exponentialRampToValueAtTime(0.01, context.currentTime + 0.2);
             
             oscillator.connect(gain);
@@ -113,7 +112,7 @@ function App() {
     const salvarNotaAutomatica = (leiturasFinais) => {
         if (gabarito.length === 0) return;
         setLocked(true);
-        playSuccessSound(); // Som acionado no momento do encaixe perfeito
+        playSuccessSound(); 
         setTimeout(() => {
             let acertos = 0;
             leiturasFinais.forEach((resp, i) => {
@@ -151,7 +150,6 @@ function App() {
                     escuro += 255 - (pixels[p] + pixels[p+1] + pixels[p+2]) / 3;
                 }
                 
-                // UI de detecção - VERDE SÓLIDO
                 ctx.strokeStyle = "#00ff00";
                 ctx.lineWidth = 3;
                 ctx.strokeRect(x, y, CONFIG.size, CONFIG.size);
@@ -235,4 +233,3 @@ root.render(<App />);
 </script>
 </body>
 </html>
-
