@@ -1,3 +1,38 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>GradePen Simulator - Modo Foto</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+    
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
+
+    <style>
+        body { margin: 0; background: #1a1a1a; font-family: sans-serif; overflow: hidden; display: flex; justify-content: center; align-items: center; height: 100vh; }
+        .scanner-container { position: relative; width: 1080px; height: 1920px; transform: scale(0.4); border: 10px solid #333; border-radius: 40px; overflow: hidden; background: #000; }
+        #camera-feed { position: absolute; width: 100%; height: 100%; object-fit: cover; }
+        canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+        .ui-overlay { position: absolute; width: 100%; height: 100%; pointer-events: none; z-index: 10; }
+        .status-bar { position: absolute; top: 80px; width: 100%; text-align: center; color: #00ff00; font-size: 40px; font-weight: bold; text-shadow: 2px 2px 4px #000; }
+        .corner { position: absolute; width: 80px; height: 80px; border: 8px solid #00ff00; }
+        .top-left { top: 150px; left: 100px; border-right: 0; border-bottom: 0; }
+        .top-right { top: 150px; right: 100px; border-left: 0; border-bottom: 0; }
+        @keyframes bounce-short {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+        .animate-bounce-short { animation: bounce-short 0.5s ease-in-out; }
+    </style>
+</head>
+<body>
+
+<div id="root"></div>
+
 <script type="text/babel">
 const { useEffect, useRef, useState } = React;
 
@@ -13,12 +48,12 @@ const CONFIG = {
 function App() {
     const videoRef = useRef(null);
     const canvasRef = useRef(null);
-    const [scanAtual, setScanAtual] = useState([]);
     const [locked, setLocked] = useState(false);
     const [gabarito, setGabarito] = useState([]);
     const [notaFinal, setNotaFinal] = useState(0);
 
     useEffect(() => {
+        // Configuração Firebase
         const firebaseConfig = {
             apiKey: "AIzaSyCZ77ugK5a3pw-U0NH43F2x1bu09sS5pJg",
             authDomain: "correcao-de-provas-f315d.firebaseapp.com",
@@ -45,126 +80,102 @@ function App() {
             });
         }
 
+        // Iniciar Câmera
         navigator.mediaDevices.getUserMedia({
-            video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } }
+            video: { facingMode: "environment", width: { ideal: 1080 }, height: { ideal: 1920 } }
         }).then(stream => {
-            videoRef.current.srcObject = stream;
-        });
+            if (videoRef.current) videoRef.current.srcObject = stream;
+        }).catch(err => alert("Erro ao acessar câmera: " + err));
     }, []);
 
-    // FUNÇÃO PARA TIRAR A FOTO E PROCESSAR
     const tirarFotoECorrigir = () => {
-        if (locked || gabarito.length === 0) return;
-
         const video = videoRef.current;
         const canvas = canvasRef.current;
-        if (!video || !canvas || video.readyState < 2) return;
+        if (!video || !canvas) return;
 
         const ctx = canvas.getContext("2d", { willReadFrequently: true });
-        
-        // Ajusta o tamanho do canvas para a resolução da foto
         canvas.width = 1080;
         canvas.height = 1920;
 
-        // 1. Desenha o frame atual do vídeo no canvas (A "Foto")
+        // Tira a foto
         ctx.drawImage(video, 0, 0, 1080, 1920);
-
-        // 2. Bloqueia a interface
         setLocked(true);
 
         const leitura = [];
-        let contagemDetectadas = 0;
+        let acertos = 0;
 
-        // 3. Processa a imagem estática (mesma lógica que você já tinha)
+        // Processa a imagem capturada
         for (let q = 0; q < 10; q++) {
             let dadosOpcoes = [];
             ['A','B','C'].forEach((opt, i) => {
                 const x = CONFIG.startX + i * CONFIG.gapX;
                 const y = CONFIG.startY + q * CONFIG.gapY;
+                
                 const pixels = ctx.getImageData(x, y, CONFIG.size, CONFIG.size).data;
                 let escuro = 0;
                 for (let p = 0; p < pixels.length; p += 4) {
                     escuro += 255 - (pixels[p] + pixels[p+1] + pixels[p+2]) / 3;
                 }
-                
-                // Feedback visual na foto tirada
-                ctx.strokeStyle = "rgba(255,255,255,0.5)";
-                ctx.strokeRect(x, y, CONFIG.size, CONFIG.size);
-                
                 dadosOpcoes.push({ opt, escuro, x, y });
             });
 
             dadosOpcoes.sort((a, b) => b.escuro - a.escuro);
             const maisEscura = dadosOpcoes[0];
-            const segundaMaisEscura = dadosOpcoes[1];
+            const segunda = dadosOpcoes[1];
 
-            if (maisEscura.escuro > CONFIG.threshold && maisEscura.escuro > segundaMaisEscura.escuro * 1.5) {
-                ctx.fillStyle = "rgba(0,255,0,0.7)";
+            if (maisEscura.escuro > CONFIG.threshold && maisEscura.escuro > segunda.escuro * 1.5) {
+                // Desenha feedback visual no canvas
+                ctx.fillStyle = "rgba(0,255,0,0.6)";
                 ctx.beginPath();
                 ctx.arc(maisEscura.x + CONFIG.size/2, maisEscura.y + CONFIG.size/2, 25, 0, Math.PI*2);
                 ctx.fill();
+                
                 leitura.push(maisEscura.opt);
-                contagemDetectadas++;
+                if (maisEscura.opt === gabarito[q]) acertos++;
             } else {
                 leitura.push(null);
             }
         }
 
-        // 4. Calcula a nota baseada na foto
-        let acertos = 0;
-        leitura.forEach((resp, i) => {
-            if (resp === gabarito[i]) acertos++;
-        });
-        
-        const calculo = acertos * 2;
-        
-        // Delay pequeno para simular processamento e mostrar o resultado
+        // Define a nota (cada acerto vale 1.0 se for de 0 a 10, ou ajuste conforme seu cálculo)
         setTimeout(() => {
-            setNotaFinal(calculo.toFixed(1));
-            setScanAtual(leitura);
-        }, 800);
+            setNotaFinal((acertos * 1.0).toFixed(1)); 
+        }, 500);
     };
 
     return (
         <div className="scanner-container">
-            {/* O vídeo fica de fundo, mas paramos de processar frames em loop */}
-            <video ref={videoRef} autoPlay playsinline id="camera-feed" className={locked ? 'opacity-20' : 'opacity-80'}/>
-            <canvas ref={canvasRef} className={locked ? 'opacity-100' : 'opacity-0'} />
+            <video ref={videoRef} autoPlay playsInline id="camera-feed" className={locked ? 'opacity-30' : 'opacity-100'}/>
+            <canvas ref={canvasRef} style={{ display: locked ? 'block' : 'none' }} />
             
             <div className="ui-overlay">
                 <div className="status-bar">
-                    {locked ? (notaFinal > 0 ? "FOTO PROCESSADA" : "ANALISANDO...") : "ALINHE E TIRE A FOTO"}
+                    {locked ? "FOTO CAPTURADA" : "MODO FOTO: ALINHE E DISPARE"}
                 </div>
                 
                 <div className="corner top-left"></div>
-                <div className="corner top-right" style={{borderLeft: 0, borderBottom: 0, right: '100px', top: '150px'}}></div>
+                <div className="corner top-right"></div>
                 
                 {!locked && (
-                    <div className="absolute bottom-[250px] left-1/2 -translate-x-1/2 flex flex-col items-center gap-8 pointer-events-auto">
-                        <div className="bg-blue-600/80 px-8 py-4 rounded-full text-2xl font-bold uppercase border border-white/20 text-white">
-                            Pronto para capturar
-                        </div>
-                        
-                        {/* BOTÃO DE TIRAR FOTO */}
+                    <div className="absolute bottom-[200px] left-1/2 -translate-x-1/2 pointer-events-auto">
                         <button 
                             onClick={tirarFotoECorrigir}
-                            className="w-32 h-32 bg-white rounded-full border-8 border-green-500 flex items-center justify-center shadow-2xl active:scale-90 transition-transform"
+                            className="w-40 h-40 bg-white rounded-full border-[15px] border-green-500 shadow-2xl active:scale-90 transition-transform"
                         >
-                            <div className="w-20 h-20 bg-green-500 rounded-full"></div>
                         </button>
                     </div>
                 )}
 
-                {locked && notaFinal > 0 && (
-                    <div className="absolute inset-0 flex items-center justify-center p-6 bg-black/60 pointer-events-auto">
-                        <div className="bg-slate-900 border-4 border-green-500 p-12 rounded-[60px] shadow-2xl text-center w-[600px] animate-bounce-short">
-                            <p className="text-green-400 font-bold text-3xl uppercase tracking-widest mb-4">Nota Final</p>
-                            <h2 className="text-[150px] font-black text-white mb-10">{notaFinal}</h2>
+                {locked && (
+                    <div className="absolute inset-0 flex items-center justify-center p-6 bg-black/40 pointer-events-auto">
+                        <div className="bg-slate-900 border-4 border-green-500 p-12 rounded-[60px] text-center w-[700px] animate-bounce-short">
+                            <p className="text-green-400 font-bold text-4xl mb-4">NOTA DO ALUNO</p>
+                            <h2 className="text-[200px] font-black text-white mb-10">{notaFinal}</h2>
                             <button 
                                 onClick={() => window.location.reload()}
-                                className="w-full bg-green-600 hover:bg-green-500 text-white font-black py-8 rounded-3xl text-4xl shadow-lg transition-transform active:scale-95"
+                                className="w-full bg-green-600 text-white font-black py-10 rounded-3xl text-5xl active:scale-95"
                             >
-                                PRÓXIMO ALUNO
+                                PRÓXIMO
                             </button>
                         </div>
                     </div>
@@ -177,3 +188,5 @@ function App() {
 const root = ReactDOM.createRoot(document.getElementById("root"));
 root.render(<App />);
 </script>
+</body>
+</html>
