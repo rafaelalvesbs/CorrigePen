@@ -1,162 +1,179 @@
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Leitor de Gabarito - Scanner</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-    <style>
-        /* CSS ORIGINAL MANTIDO */
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { background-color: #000; color: #fff; font-family: 'Segoe UI', sans-serif; overflow: hidden; display: flex; flex-direction: column; height: 100vh; }
-        #scanner-container { position: relative; flex: 1; display: flex; justify-content: center; align-items: center; background: #1a1a1a; }
-        video { width: 100%; height: 100%; object-fit: cover; }
-        .overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; border: 40px solid rgba(0,0,0,0.6); pointer-events: none; display: flex; justify-content: center; align-items: center; }
-        .guide-box { width: 80%; height: 70%; border: 2px solid #27ae60; border-radius: 10px; position: relative; box-shadow: 0 0 20px rgba(39, 174, 96, 0.4); }
-        .corner { position: absolute; width: 20px; height: 20px; border: 4px solid #fff; }
-        .top-left { top: -5px; left: -5px; border-right: 0; border-bottom: 0; }
-        .top-right { top: -5px; right: -5px; border-left: 0; border-bottom: 0; }
-        .bottom-left { bottom: -5px; left: -5px; border-right: 0; border-top: 0; }
-        .bottom-right { bottom: -5px; right: -5px; border-left: 0; border-top: 0; }
-        .controls { height: 150px; background: #003058; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; border-top-left-radius: 20px; border-top-right-radius: 20px; }
-        .btn-capture { width: 70px; height: 70px; border-radius: 50%; background: #fff; border: 5px solid #27ae60; cursor: pointer; display: flex; justify-content: center; align-items: center; font-size: 1.5rem; color: #27ae60; transition: 0.3s; }
-        .btn-capture:active { transform: scale(0.9); }
-        .status-text { margin-top: 10px; font-size: 0.9rem; color: #2ecc71; font-weight: bold; }
-        #result-preview { position: absolute; bottom: 160px; left: 20px; right: 20px; background: rgba(255,255,255,0.9); color: #333; padding: 15px; border-radius: 10px; display: none; animation: slideUp 0.3s ease; z-index: 10; }
-        @keyframes slideUp { from { transform: translateY(100px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-        
-        /* Debug canvas para ver as coordenadas (opcional) */
-        #debug-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; opacity: 0.5; }
-    </style>
-</head>
-<body>
+<script type="text/babel">
+const { useEffect, useRef, useState } = React;
 
-<div id="scanner-container">
-    <video id="video" autoplay playsinline></video>
-    <canvas id="debug-canvas"></canvas>
-    
-    <div class="overlay">
-        <div class="guide-box">
-            <div class="corner top-left"></div>
-            <div class="corner top-right"></div>
-            <div class="corner bottom-left"></div>
-            <div class="corner bottom-right"></div>
-        </div>
-    </div>
+const CONFIG = {
+    startX: 377,
+    startY: 351,
+    gapX: 93,
+    gapY: 76,
+    size: 30,
+    threshold: 35000
+};
 
-    <div id="result-preview">
-        <strong>Resultado Detectado:</strong>
-        <p id="stats">Processando...</p>
-    </div>
-</div>
+function App() {
+    const videoRef = useRef(null);
+    const canvasRef = useRef(null);
+    const [scanAtual, setScanAtual] = useState([]);
+    const [locked, setLocked] = useState(false);
+    const [gabarito, setGabarito] = useState([]);
+    const [notaFinal, setNotaFinal] = useState(0);
 
-<div class="controls">
-    <button class="btn-capture" id="capture">
-        <i class="fa-solid fa-camera"></i>
-    </button>
-    <div class="status-text" id="status">POSICIONE A FOLHA NA MOLDURA</div>
-</div>
+    useEffect(() => {
+        const firebaseConfig = {
+            apiKey: "AIzaSyCZ77ugK5a3pw-U0NH43F2x1bu09sS5pJg",
+            authDomain: "correcao-de-provas-f315d.firebaseapp.com",
+            projectId: "correcao-de-provas-f315d",
+            databaseURL: "https://correcao-de-provas-f315d-default-rtdb.firebaseio.com",
+        };
 
-<canvas id="canvas" style="display:none;"></canvas>
-
-<script>
-    const video = document.getElementById('video');
-    const captureBtn = document.getElementById('capture');
-    const statusText = document.getElementById('status');
-    const resultPreview = document.getElementById('result-preview');
-    const statsP = document.getElementById('stats');
-    const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d');
-
-    // COORDENADAS FORNECIDAS
-    const startX = 377;
-    const startY = 351;
-    const gapX = 93;
-    const gapY = 76;
-    const numQuestoes = 10;
-    const alternativas = ['A', 'B', 'C'];
-
-    async function startCamera() {
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } },
-                audio: false
-            });
-            video.srcObject = stream;
-        } catch (err) {
-            statusText.innerText = "ERRO AO ACESSAR CÂMERA";
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
         }
-    }
 
-    // Função que "lê" os pixels nas coordenadas
-    function processarGabarito() {
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const params = new URLSearchParams(window.location.search);
+        const provaId = params.get("provaId");
 
-        let resultados = [];
-        
-        for (let i = 0; i < numQuestoes; i++) {
-            let questaoMarcada = "?";
-            let maiorEscuridao = 0;
-
-            alternativas.forEach((alt, indexAlt) => {
-                const posX = startX + (indexAlt * gapX);
-                const posY = startY + (i * gapY);
-
-                // Analisa área de 20x20 pixels ao redor da coordenada
-                const imageData = ctx.getImageData(posX - 10, posY - 10, 20, 20);
-                let escuridao = 0;
-
-                for (let p = 0; p < imageData.data.length; p += 4) {
-                    // Soma quão escuro é o pixel (Luminosidade invertida)
-                    escuridao += (255 - (imageData.data[p] + imageData.data[p+1] + imageData.data[p+2]) / 3);
-                }
-
-                if (escuridao > maiorEscuridao && escuridao > 5000) { // Threshold de segurança
-                    maiorEscuridao = escuridao;
-                    questaoMarcada = alt;
+        if (provaId) {
+            firebase.database().ref(`gabaritos/${provaId}`).once('value').then(snapshot => {
+                if (snapshot.exists()) {
+                    const obj = snapshot.val();
+                    const arr = Object.keys(obj)
+                        .sort((a,b)=>Number(a)-Number(b))
+                        .map(k => obj[k]);
+                    setGabarito(arr);
                 }
             });
-            resultados.push(`Q${i+1}:${questaoMarcada}`);
         }
-        return resultados;
-    }
 
-    captureBtn.addEventListener('click', () => {
-        if (video.readyState !== 4) return;
+        navigator.mediaDevices.getUserMedia({
+            video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } }
+        }).then(stream => {
+            videoRef.current.srcObject = stream;
+        });
+    }, []);
 
-        statusText.innerText = "LENDO COORDENADAS...";
-        captureBtn.style.background = "#27ae60";
-        captureBtn.style.color = "#fff";
+    // FUNÇÃO PARA TIRAR A FOTO E PROCESSAR
+    const tirarFotoECorrigir = () => {
+        if (locked || gabarito.length === 0) return;
 
+        const video = videoRef.current;
+        const canvas = canvasRef.current;
+        if (!video || !canvas || video.readyState < 2) return;
+
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });
+        
+        // Ajusta o tamanho do canvas para a resolução da foto
+        canvas.width = 1080;
+        canvas.height = 1920;
+
+        // 1. Desenha o frame atual do vídeo no canvas (A "Foto")
+        ctx.drawImage(video, 0, 0, 1080, 1920);
+
+        // 2. Bloqueia a interface
+        setLocked(true);
+
+        const leitura = [];
+        let contagemDetectadas = 0;
+
+        // 3. Processa a imagem estática (mesma lógica que você já tinha)
+        for (let q = 0; q < 10; q++) {
+            let dadosOpcoes = [];
+            ['A','B','C'].forEach((opt, i) => {
+                const x = CONFIG.startX + i * CONFIG.gapX;
+                const y = CONFIG.startY + q * CONFIG.gapY;
+                const pixels = ctx.getImageData(x, y, CONFIG.size, CONFIG.size).data;
+                let escuro = 0;
+                for (let p = 0; p < pixels.length; p += 4) {
+                    escuro += 255 - (pixels[p] + pixels[p+1] + pixels[p+2]) / 3;
+                }
+                
+                // Feedback visual na foto tirada
+                ctx.strokeStyle = "rgba(255,255,255,0.5)";
+                ctx.strokeRect(x, y, CONFIG.size, CONFIG.size);
+                
+                dadosOpcoes.push({ opt, escuro, x, y });
+            });
+
+            dadosOpcoes.sort((a, b) => b.escuro - a.escuro);
+            const maisEscura = dadosOpcoes[0];
+            const segundaMaisEscura = dadosOpcoes[1];
+
+            if (maisEscura.escuro > CONFIG.threshold && maisEscura.escuro > segundaMaisEscura.escuro * 1.5) {
+                ctx.fillStyle = "rgba(0,255,0,0.7)";
+                ctx.beginPath();
+                ctx.arc(maisEscura.x + CONFIG.size/2, maisEscura.y + CONFIG.size/2, 25, 0, Math.PI*2);
+                ctx.fill();
+                leitura.push(maisEscura.opt);
+                contagemDetectadas++;
+            } else {
+                leitura.push(null);
+            }
+        }
+
+        // 4. Calcula a nota baseada na foto
+        let acertos = 0;
+        leitura.forEach((resp, i) => {
+            if (resp === gabarito[i]) acertos++;
+        });
+        
+        const calculo = acertos * 2;
+        
+        // Delay pequeno para simular processamento e mostrar o resultado
         setTimeout(() => {
-            const leituras = processarGabarito();
-            const acertos = leituras.filter(r => !r.includes('?')).length;
+            setNotaFinal(calculo.toFixed(1));
+            setScanAtual(leitura);
+        }, 800);
+    };
+
+    return (
+        <div className="scanner-container">
+            {/* O vídeo fica de fundo, mas paramos de processar frames em loop */}
+            <video ref={videoRef} autoPlay playsinline id="camera-feed" className={locked ? 'opacity-20' : 'opacity-80'}/>
+            <canvas ref={canvasRef} className={locked ? 'opacity-100' : 'opacity-0'} />
             
-            statusText.innerText = "LEITURA CONCLUÍDA!";
-            statsP.innerHTML = `<strong>Captura:</strong> ${leituras.join(' | ')}<br><strong>Total Identificado:</strong> ${acertos}/10 questões`;
-            resultPreview.style.display = "block";
-            
-            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            const oscillator = audioCtx.createOscillator();
-            oscillator.frequency.setValueAtTime(880, audioCtx.currentTime);
-            oscillator.connect(audioCtx.destination);
-            oscillator.start();
-            oscillator.stop(audioCtx.currentTime + 0.1);
+            <div className="ui-overlay">
+                <div className="status-bar">
+                    {locked ? (notaFinal > 0 ? "FOTO PROCESSADA" : "ANALISANDO...") : "ALINHE E TIRE A FOTO"}
+                </div>
+                
+                <div className="corner top-left"></div>
+                <div className="corner top-right" style={{borderLeft: 0, borderBottom: 0, right: '100px', top: '150px'}}></div>
+                
+                {!locked && (
+                    <div className="absolute bottom-[250px] left-1/2 -translate-x-1/2 flex flex-col items-center gap-8 pointer-events-auto">
+                        <div className="bg-blue-600/80 px-8 py-4 rounded-full text-2xl font-bold uppercase border border-white/20 text-white">
+                            Pronto para capturar
+                        </div>
+                        
+                        {/* BOTÃO DE TIRAR FOTO */}
+                        <button 
+                            onClick={tirarFotoECorrigir}
+                            className="w-32 h-32 bg-white rounded-full border-8 border-green-500 flex items-center justify-center shadow-2xl active:scale-90 transition-transform"
+                        >
+                            <div className="w-20 h-20 bg-green-500 rounded-full"></div>
+                        </button>
+                    </div>
+                )}
 
-            setTimeout(() => {
-                resultPreview.style.display = "none";
-                statusText.innerText = "POSICIONE A PRÓXIMA FOLHA";
-                captureBtn.style.background = "#fff";
-                captureBtn.style.color = "#27ae60";
-            }, 5000);
+                {locked && notaFinal > 0 && (
+                    <div className="absolute inset-0 flex items-center justify-center p-6 bg-black/60 pointer-events-auto">
+                        <div className="bg-slate-900 border-4 border-green-500 p-12 rounded-[60px] shadow-2xl text-center w-[600px] animate-bounce-short">
+                            <p className="text-green-400 font-bold text-3xl uppercase tracking-widest mb-4">Nota Final</p>
+                            <h2 className="text-[150px] font-black text-white mb-10">{notaFinal}</h2>
+                            <button 
+                                onClick={() => window.location.reload()}
+                                className="w-full bg-green-600 hover:bg-green-500 text-white font-black py-8 rounded-3xl text-4xl shadow-lg transition-transform active:scale-95"
+                            >
+                                PRÓXIMO ALUNO
+                            </button>
+                        </div>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
 
-        }, 500);
-    });
-
-    window.onload = startCamera;
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(<App />);
 </script>
-
-</body>
-</html>
