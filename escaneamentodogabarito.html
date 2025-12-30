@@ -61,8 +61,8 @@ function App() {
             oscillator.type = 'square'; 
             oscillator.frequency.setValueAtTime(880, context.currentTime); 
             
-            // Volume ajustado para 2.0
-            gain.gain.setValueAtTime(2.0, context.currentTime);
+            // Volume ajustado para 10.0
+            gain.gain.setValueAtTime(10.0, context.currentTime);
             gain.gain.exponentialRampToValueAtTime(0.01, context.currentTime + 0.2);
             
             oscillator.connect(gain);
@@ -233,3 +233,4 @@ root.render(<App />);
 </script>
 </body>
 </html>
+
